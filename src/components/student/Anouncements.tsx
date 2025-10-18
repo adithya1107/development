@@ -6,10 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { 
-  MessageSquare, 
-  Bell, 
-  Users, 
+import {
+  MessageSquare,
+  Bell,
+  Users,
   Send,
   Reply,
   Eye
@@ -102,7 +102,7 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
             `)
             .eq('parent_post_id', post.id)
             .order('created_at');
-          
+
           return { ...post, replies: replies || [] };
         })
       );
@@ -172,26 +172,28 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Communication Center</h2>
-        <div className="flex space-x-2">
-          <Badge variant="outline">{announcements.length} Announcements</Badge>
-          <Badge variant="outline">{forums.length} Forums</Badge>
+    <div className="space-y-4 sm:space-y-6 px-3 sm:px-4 md:px-6 w-full max-w-full">
+      <div className="flex flex-col xs:flex-row justify-between items-start xs:items-center gap-3">
+        <h2 className="text-lg sm:text-xl md:text-2xl font-bold">Communication Center</h2>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">{announcements.length} Announcements</Badge>
+          <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">{forums.length} Forums</Badge>
         </div>
       </div>
 
-      <Tabs defaultValue="announcements" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="announcements" className="flex items-center space-x-2">
-            <Bell className="h-4 w-4" />
-            <span>Announcements</span>
-          </TabsTrigger>
-          <TabsTrigger value="forums" className="flex items-center space-x-2">
-            <MessageSquare className="h-4 w-4" />
-            <span>Discussion Forums</span>
-          </TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="announcements" className="space-y-4 w-full">
+        <div className="w-full">
+          <TabsList className="grid w-full grid-cols-2 h-auto">
+            <TabsTrigger value="announcements" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
+              <Bell className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+              <span className="truncate">Announcements</span>
+            </TabsTrigger>
+            <TabsTrigger value="forums" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
+              <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+              <span className="truncate">Discussion Forums</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="announcements" className="space-y-4">
           {announcements.length === 0 ? (
@@ -202,34 +204,57 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 sm:space-y-6">
               {announcements.map((announcement: any) => (
-                <Card key={announcement.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold mb-2">{announcement.title}</h3>
-                        <p className="text-gray-700 leading-relaxed">{announcement.content}</p>
+                <Card
+                  key={announcement.id}
+                  className="hover:shadow-md transition-shadow w-full"
+                >
+                  <CardContent className="p-4 sm:p-6">
+                    {/* Header Section */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
+                      {/* Title + Content */}
+                      <div className="flex-1 w-full">
+                        <h3 className="text-base sm:text-lg font-semibold mb-2 break-words">
+                          {announcement.title}
+                        </h3>
+                        <p className="text-gray-700 text-sm sm:text-base leading-relaxed break-words">
+                          {announcement.content}
+                        </p>
                       </div>
-                      <div className="flex flex-col items-end space-y-2 ml-4">
-                        <Badge variant={getPriorityColor(announcement.priority)}>
+
+                      {/* Badges */}
+                      <div className="flex flex-row sm:flex-col items-start sm:items-end gap-2 sm:space-y-2">
+                        <Badge
+                          variant={getPriorityColor(announcement.priority)}
+                          className="text-xs sm:text-sm px-2 sm:px-3 py-0.5"
+                        >
                           {announcement.priority}
                         </Badge>
-                        <Badge variant={getAnnouncementTypeColor(announcement.announcement_type)}>
+                        <Badge
+                          variant={getAnnouncementTypeColor(announcement.announcement_type)}
+                          className="text-xs sm:text-sm px-2 sm:px-3 py-0.5"
+                        >
                           {announcement.announcement_type}
                         </Badge>
                       </div>
                     </div>
-                    <div className="flex justify-between items-center text-sm text-gray-500 pt-3 border-t">
-                      <span>{new Date(announcement.created_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}</span>
+
+                    {/* Footer (Date Section) */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center text-xs sm:text-sm text-gray-500 pt-3 border-t gap-1 sm:gap-2">
+                      <span className="whitespace-nowrap">
+                        {new Date(announcement.created_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
                       {announcement.expires_at && (
-                        <span>Expires: {new Date(announcement.expires_at).toLocaleDateString()}</span>
+                        <span className="whitespace-nowrap">
+                          Expires: {new Date(announcement.expires_at).toLocaleDateString()}
+                        </span>
                       )}
                     </div>
                   </CardContent>
@@ -241,7 +266,7 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
 
         <TabsContent value="forums" className="space-y-4">
           {selectedForum ? (
-            <ForumDiscussion 
+            <ForumDiscussion
               forum={selectedForum}
               posts={forumPosts}
               onBack={() => setSelectedForum(null)}
@@ -249,35 +274,46 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
               currentUserId={studentData.user_id}
             />
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-4 sm:space-y-6">
               {forums.length === 0 ? (
                 <Card>
                   <CardContent className="text-center py-8">
                     <MessageSquare className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500">No discussion forums available</p>
+                    <p className="text-gray-500 text-sm sm:text-base">No discussion forums available</p>
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {forums.map((forum: any) => (
-                    <Card key={forum.id} className="hover:shadow-md transition-shadow cursor-pointer">
-                      <CardContent className="p-6">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <h3 className="text-lg font-semibold mb-2">{forum.title}</h3>
-                            <p className="text-gray-600 text-sm mb-2">{forum.description}</p>
-                            <Badge variant="outline">
+                    <Card
+                      key={forum.id}
+                      className="hover:shadow-md transition-shadow cursor-pointer w-full"
+                    >
+                      <CardContent className="p-4 sm:p-6 flex flex-col justify-between h-full">
+                        {/* Header Section */}
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+                          <div className="flex-1 w-full">
+                            <h3 className="text-base sm:text-lg font-semibold mb-1 break-words">
+                              {forum.title}
+                            </h3>
+                            <p className="text-gray-600 text-sm sm:text-base mb-2 leading-relaxed break-words">
+                              {forum.description}
+                            </p>
+                            <Badge variant="outline" className="text-xs sm:text-sm px-2 sm:px-3 py-0.5">
                               {forum.courses.course_name}
                             </Badge>
                           </div>
-                          <Users className="h-5 w-5 text-gray-400" />
+                          <Users className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400 flex-shrink-0" />
                         </div>
-                        <div className="flex justify-between items-center pt-3 border-t">
-                          <span className="text-sm text-gray-500">
+
+                        {/* Footer Section */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-3 border-t text-xs sm:text-sm text-gray-500 gap-2 sm:gap-0">
+                          <span className="whitespace-nowrap">
                             Created: {new Date(forum.created_at).toLocaleDateString()}
                           </span>
-                          <Button 
+                          <Button
                             size="sm"
+                            className="w-full sm:w-auto"
                             onClick={() => {
                               setSelectedForum(forum);
                               fetchForumPosts(forum.id);
@@ -366,7 +402,7 @@ const ForumDiscussion: React.FC<{
           </Card>
         ) : (
           posts.map((post) => (
-            <ForumPost 
+            <ForumPost
               key={post.id}
               post={post}
               onReply={(content) => onCreatePost(forum.id, content, post.id)}
@@ -416,10 +452,10 @@ const ForumPost: React.FC<{
             </div>
           </div>
           <p className="text-gray-700 leading-relaxed">{post.content}</p>
-          
+
           <div className="flex items-center space-x-4 mt-4">
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               onClick={() => setShowReplyForm(!showReplyForm)}
             >

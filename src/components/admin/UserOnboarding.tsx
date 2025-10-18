@@ -484,20 +484,20 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
             <div>
               <CardTitle className="flex items-center space-x-2">
-                <UserPlus className="w-5 h-5" />
+                <UserPlus className="w-7 h-7 mr-2" />
                 <span>User Onboarding & Email Tracking</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className='mt-2'>
                 Add new users with automated onboarding and track email delivery status
               </CardDescription>
             </div>
             <div className="flex space-x-2">
               <Dialog open={isBulkImportDialogOpen} onOpenChange={setIsBulkImportDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline">
+                  <Button variant="outline" className="w-full sm:w-auto">
                     <Download className="w-4 h-4 mr-2" />
                     Bulk Import
                   </Button>
@@ -628,25 +628,25 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <TabsList>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 w-full">
+            <TabsList className="grid w-full grid-cols-3 h-auto">
               <TabsTrigger value="pending" className="flex items-center space-x-2">
                 <Clock className="w-4 h-4" />
-                <span>Pending ({filteredRecords('pending').length})</span>
+                <span className="inline">Pending ({filteredRecords('pending').length})</span>
               </TabsTrigger>
               <TabsTrigger value="completed" className="flex items-center space-x-2">
                 <CheckCircle className="w-4 h-4" />
-                <span>Completed ({filteredRecords('completed').length})</span>
+                <span className="inline">Completed ({filteredRecords('completed').length})</span>
               </TabsTrigger>
               <TabsTrigger value="failed" className="flex items-center space-x-2">
                 <XCircle className="w-4 h-4" />
-                <span>Failed ({filteredRecords('failed').length})</span>
+                <span className="inline">Failed ({filteredRecords('failed').length})</span>
               </TabsTrigger>
             </TabsList>
 
             {['pending', 'completed', 'failed'].map((status) => (
               <TabsContent key={status} value={status}>
-                <div className="rounded-md border">
+                <div className="rounded-md border max-h-[350px] sm:max-h-[450px] overflow-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>

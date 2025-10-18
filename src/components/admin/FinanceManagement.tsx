@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,14 +8,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  DollarSign, 
-  Plus, 
-  Edit, 
+import {
+  DollarSign,
+  Plus,
+  Edit,
   Trash2,
-  Download, 
-  Search, 
-  TrendingUp, 
+  Download,
+  Search,
+  TrendingUp,
   CreditCard,
   Users,
   AlertCircle,
@@ -23,7 +23,8 @@ import {
   RefreshCw,
   FileText,
   Check,
-  X
+  X,
+  DollarSignIcon
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -39,7 +40,7 @@ const FinanceManagement = ({ userProfile }) => {
     collectionRate: 0,
     recentPayments: []
   });
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSemester, setFilterSemester] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -340,7 +341,7 @@ const FinanceManagement = ({ userProfile }) => {
     try {
       const { error } = await supabase
         .from('fee_payments')
-        .update({ 
+        .update({
           status: 'completed',
           payment_date: new Date().toISOString()
         })
@@ -458,7 +459,7 @@ const FinanceManagement = ({ userProfile }) => {
       Object.keys(data[0]).join(','),
       ...data.map(row => Object.values(row).map(val => `"${val}"`).join(','))
     ].join('\n');
-    
+
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -470,24 +471,25 @@ const FinanceManagement = ({ userProfile }) => {
 
   const filteredFeeStructures = feeStructures.filter(fee => {
     const matchesSearch = fee.fee_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         fee.academic_year.toLowerCase().includes(searchTerm.toLowerCase());
+      fee.academic_year.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSemester = filterSemester === 'all' || fee.semester === filterSemester;
-    const matchesStatus = filterStatus === 'all' || 
-                         (filterStatus === 'active' && fee.is_active) ||
-                         (filterStatus === 'inactive' && !fee.is_active);
-    
+    const matchesStatus = filterStatus === 'all' ||
+      (filterStatus === 'active' && fee.is_active) ||
+      (filterStatus === 'inactive' && !fee.is_active);
+
     return matchesSearch && matchesSemester && matchesStatus;
   });
+
 
   const filteredPayments = payments.filter(payment => {
     const fullName = `${payment.user_profiles?.first_name} ${payment.user_profiles?.last_name}`.toLowerCase();
     const userCode = payment.user_profiles?.user_code?.toLowerCase() || '';
     const feeType = payment.fee_structures?.fee_type?.toLowerCase() || '';
-    
+
     return fullName.includes(searchTerm.toLowerCase()) ||
-           userCode.includes(searchTerm.toLowerCase()) ||
-           feeType.includes(searchTerm.toLowerCase()) ||
-           payment.transaction_id.toLowerCase().includes(searchTerm.toLowerCase());
+      userCode.includes(searchTerm.toLowerCase()) ||
+      feeType.includes(searchTerm.toLowerCase()) ||
+      payment.transaction_id.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
   if (isLoading) {
@@ -499,53 +501,55 @@ const FinanceManagement = ({ userProfile }) => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-4 sm:space-y-6 p-2 sm:p-4 md:p-0">
+      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Finance Management</h2>
-          <p className="text-muted-foreground">
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Finance Management</h2>
+          <p className="text-muted-foreground text-sm sm:text-base mt-2">
             Manage fee structures, track payments, and monitor financial performance
           </p>
         </div>
-        <Button onClick={loadAllData} variant="outline" size="sm">
+        <Button onClick={loadAllData} variant="default" size="sm" className="w-full sm:w-60">
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
         </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="dashboard">
-            <TrendingUp className="h-4 w-4 mr-2" />
-            Dashboard
-          </TabsTrigger>
-          <TabsTrigger value="structures">
-            <DollarSign className="h-4 w-4 mr-2" />
-            Fee Structures
-          </TabsTrigger>
-          <TabsTrigger value="payments">
-            <CreditCard className="h-4 w-4 mr-2" />
-            Payments
-          </TabsTrigger>
-          <TabsTrigger value="pending">
-            <AlertCircle className="h-4 w-4 mr-2" />
-            Pending ({pendingPayments.length})
-          </TabsTrigger>
-          <TabsTrigger value="reports">
-            <FileText className="h-4 w-4 mr-2" />
-            Reports
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-2 sm:mx-0">
+          <TabsList className="grid w-full grid-cols-5 min-w-[600px] sm:min-w-0">
+            <TabsTrigger value="dashboard" className="text-xs sm:text-sm">
+              <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span>Dashboard</span>
+            </TabsTrigger>
+            <TabsTrigger value="structures" className="text-xs sm:text-sm">
+              <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span>Fee Structures</span>
+            </TabsTrigger>
+            <TabsTrigger value="payments" className="text-xs sm:text-sm">
+              <CreditCard className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span>Payments</span>
+            </TabsTrigger>
+            <TabsTrigger value="pending" className="text-xs sm:text-sm">
+              <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span>Pending ({pendingPayments.length})</span>
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="text-xs sm:text-sm">
+              <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+              <span>Reports</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <TabsContent value="dashboard" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <TabsContent value="dashboard" className="space-y-4 sm:space-y-6">
+          <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+                <CardTitle className="text-xs sm:text-sm font-medium">Total Revenue</CardTitle>
+                <DollarSign className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(dashboardStats.totalRevenue)}</div>
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <div className="text-lg sm:text-2xl font-bold">{formatCurrency(dashboardStats.totalRevenue)}</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   From completed payments
                 </p>
@@ -553,12 +557,12 @@ const FinanceManagement = ({ userProfile }) => {
             </Card>
 
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Collection Rate</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+                <CardTitle className="text-xs sm:text-sm font-medium">Collection Rate</CardTitle>
+                <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{dashboardStats.collectionRate.toFixed(1)}%</div>
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <div className="text-lg sm:text-2xl font-bold">{dashboardStats.collectionRate.toFixed(1)}%</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Of expected revenue
                 </p>
@@ -566,12 +570,12 @@ const FinanceManagement = ({ userProfile }) => {
             </Card>
 
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pending Payments</CardTitle>
-                <AlertCircle className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+                <CardTitle className="text-xs sm:text-sm font-medium">Pending Payments</CardTitle>
+                <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{dashboardStats.pendingPayments}</div>
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <div className="text-lg sm:text-2xl font-bold">{dashboardStats.pendingPayments}</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Awaiting verification
                 </p>
@@ -579,12 +583,12 @@ const FinanceManagement = ({ userProfile }) => {
             </Card>
 
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Students</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4 sm:p-6">
+                <CardTitle className="text-xs sm:text-sm font-medium">Total Students</CardTitle>
+                <Users className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground" />
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{dashboardStats.totalStudents}</div>
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <div className="text-lg sm:text-2xl font-bold">{dashboardStats.totalStudents}</div>
                 <p className="text-xs text-muted-foreground mt-1">
                   Active students
                 </p>
@@ -593,37 +597,37 @@ const FinanceManagement = ({ userProfile }) => {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Recent Payments</CardTitle>
-              <CardDescription>Latest fee payments received</CardDescription>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Recent Payments</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Latest fee payments received</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <div className="space-y-3 sm:space-y-4">
                 {dashboardStats.recentPayments.map((payment) => (
-                  <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <CreditCard className="h-5 w-5 text-blue-600" />
+                  <div key={payment.id} className="flex items-center justify-between p-3 sm:p-4 border rounded-lg">
+                    <div className="flex items-center space-x-3 sm:space-x-4 flex-1 min-w-0">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
                       </div>
-                      <div>
-                        <p className="font-medium">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm sm:text-base truncate">
                           {payment.user_profiles?.first_name} {payment.user_profiles?.last_name}
                         </p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs sm:text-sm text-muted-foreground truncate">
                           {payment.fee_structures?.fee_type} - {payment.user_profiles?.user_code}
                         </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">{formatCurrency(payment.amount_paid)}</p>
-                      <p className="text-sm text-muted-foreground">
+                    <div className="text-right ml-2 flex-shrink-0">
+                      <p className="font-medium text-sm sm:text-base">{formatCurrency(payment.amount_paid)}</p>
+                      <p className="text-xs sm:text-sm text-muted-foreground">
                         {formatDate(payment.payment_date)}
                       </p>
                     </div>
                   </div>
                 ))}
                 {dashboardStats.recentPayments.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
+                  <div className="text-center py-8 text-muted-foreground text-sm">
                     No recent payments found
                   </div>
                 )}
@@ -632,20 +636,20 @@ const FinanceManagement = ({ userProfile }) => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="structures" className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="relative">
+        <TabsContent value="structures" className="space-y-4 sm:space-y-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 flex-1">
+              <div className="relative flex-1 sm:max-w-xs">
                 <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
                 <Input
                   placeholder="Search fee structures..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 w-64"
+                  className="pl-10 text-sm"
                 />
               </div>
               <Select value={filterSemester} onValueChange={setFilterSemester}>
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-full sm:w-32 text-sm">
                   <SelectValue placeholder="Semester" />
                 </SelectTrigger>
                 <SelectContent>
@@ -656,7 +660,7 @@ const FinanceManagement = ({ userProfile }) => {
                 </SelectContent>
               </Select>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-full sm:w-32 text-sm">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -668,45 +672,47 @@ const FinanceManagement = ({ userProfile }) => {
             </div>
             <Dialog open={isAddFeeDialogOpen} onOpenChange={setIsAddFeeDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button className="w-full sm:w-auto text-sm">
                   <Plus className="h-4 w-4 mr-2" />
                   Add Fee Structure
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl">
+              <DialogContent className="w-[95vw] max-w-2xl mx-auto max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Add New Fee Structure</DialogTitle>
-                  <DialogDescription>
+                  <DialogTitle className="text-lg sm:text-xl">Add New Fee Structure</DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm">
                     Create a new fee structure for students
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="fee_type">Fee Type *</Label>
+                      <Label htmlFor="fee_type" className="text-sm">Fee Type *</Label>
                       <Input
                         id="fee_type"
                         value={feeForm.fee_type}
-                        onChange={(e) => setFeeForm({...feeForm, fee_type: e.target.value})}
+                        onChange={(e) => setFeeForm({ ...feeForm, fee_type: e.target.value })}
                         placeholder="e.g., Tuition Fee, Library Fee"
+                        className="text-sm"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="amount">Amount (₹) *</Label>
+                      <Label htmlFor="amount" className="text-sm">Amount (₹) *</Label>
                       <Input
                         id="amount"
                         type="number"
                         value={feeForm.amount}
-                        onChange={(e) => setFeeForm({...feeForm, amount: Number(e.target.value)})}
+                        onChange={(e) => setFeeForm({ ...feeForm, amount: Number(e.target.value) })}
                         placeholder="0.00"
+                        className="text-sm"
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="academic_year">Academic Year</Label>
-                      <Select value={feeForm.academic_year} onValueChange={(value) => setFeeForm({...feeForm, academic_year: value})}>
-                        <SelectTrigger>
+                      <Label htmlFor="academic_year" className="text-sm">Academic Year</Label>
+                      <Select value={feeForm.academic_year} onValueChange={(value) => setFeeForm({ ...feeForm, academic_year: value })}>
+                        <SelectTrigger className="text-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -717,9 +723,9 @@ const FinanceManagement = ({ userProfile }) => {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="semester">Semester</Label>
-                      <Select value={feeForm.semester} onValueChange={(value) => setFeeForm({...feeForm, semester: value})}>
-                        <SelectTrigger>
+                      <Label htmlFor="semester" className="text-sm">Semester</Label>
+                      <Select value={feeForm.semester} onValueChange={(value) => setFeeForm({ ...feeForm, semester: value })}>
+                        <SelectTrigger className="text-sm">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -731,9 +737,9 @@ const FinanceManagement = ({ userProfile }) => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="user_type">User Type</Label>
-                    <Select value={feeForm.user_type} onValueChange={(value) => setFeeForm({...feeForm, user_type: value})}>
-                      <SelectTrigger>
+                    <Label htmlFor="user_type" className="text-sm">User Type</Label>
+                    <Select value={feeForm.user_type} onValueChange={(value) => setFeeForm({ ...feeForm, user_type: value })}>
+                      <SelectTrigger className="text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -743,11 +749,11 @@ const FinanceManagement = ({ userProfile }) => {
                     </Select>
                   </div>
                 </div>
-                <div className="flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => setIsAddFeeDialogOpen(false)}>
+                <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:space-x-2">
+                  <Button variant="outline" onClick={() => setIsAddFeeDialogOpen(false)} className="text-sm">
                     Cancel
                   </Button>
-                  <Button onClick={handleAddFeeStructure}>
+                  <Button onClick={handleAddFeeStructure} className="text-sm">
                     Create Fee Structure
                   </Button>
                 </div>
@@ -756,51 +762,52 @@ const FinanceManagement = ({ userProfile }) => {
           </div>
 
           <Card>
-            <CardContent className="p-0">
+            <CardContent className="p-4 sm:p-6 sm:pt-6 max-h-[350px] sm:max-h-[450px] overflow-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Fee Type</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Academic Year</TableHead>
-                    <TableHead>Semester</TableHead>
-                    <TableHead>User Type</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[150px]">Fee Type</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[100px]">Amount</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[120px]">Academic Year</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[100px]">Semester</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[100px]">User Type</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[80px]">Status</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[120px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredFeeStructures.map((fee) => (
                     <TableRow key={fee.id}>
-                      <TableCell className="font-medium">
+                      <TableCell className="font-medium text-xs sm:text-sm min-w-[150px]">
                         {fee.fee_type}
                       </TableCell>
-                      <TableCell>{formatCurrency(fee.amount)}</TableCell>
-                      <TableCell>{fee.academic_year}</TableCell>
-                      <TableCell>{fee.semester || '-'}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{fee.user_type || 'student'}</Badge>
+                      <TableCell className="text-xs sm:text-sm min-w-[100px]">{formatCurrency(fee.amount)}</TableCell>
+                      <TableCell className="text-xs sm:text-sm min-w-[120px]">{fee.academic_year}</TableCell>
+                      <TableCell className="text-xs sm:text-sm min-w-[100px]">{fee.semester || '-'}</TableCell>
+                      <TableCell className="min-w-[100px]">
+                        <Badge variant="outline" className="text-xs">{fee.user_type || 'student'}</Badge>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant={fee.is_active ? 'default' : 'secondary'}>
+                      <TableCell className="min-w-[80px]">
+                        <Badge variant={fee.is_active ? 'default' : 'secondary'} className="text-xs">
                           {fee.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
+                      <TableCell className="min-w-[120px]">
+                        <div className="flex flext-items-center gap-4">
                           <Button
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
                             onClick={() => openEditDialog(fee)}
                           >
-                            <Edit className="h-4 w-4" />
+                            <Edit className="h-3 w-3 sm:h-4 sm:w-" />
                           </Button>
                           <Button
-                            variant="ghost"
+                            variant="outline"
+                            className="text-red-600 hover:text-red-700"
                             size="sm"
                             onClick={() => handleDeleteFeeStructure(fee.id)}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 text-red-500" />
                           </Button>
                         </div>
                       </TableCell>
@@ -809,7 +816,7 @@ const FinanceManagement = ({ userProfile }) => {
                 </TableBody>
               </Table>
               {filteredFeeStructures.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
+                <div className="text-center py-8 text-muted-foreground text-sm">
                   No fee structures found
                 </div>
               )}
@@ -817,149 +824,78 @@ const FinanceManagement = ({ userProfile }) => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="payments" className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div className="relative">
+        <TabsContent value="payments" className="space-y-4 sm:space-y-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <div className="relative flex-1 sm:max-w-xs">
               <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
               <Input
                 placeholder="Search payments..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-64"
+                className="pl-10 text-sm"
               />
             </div>
-            <Button variant="outline" onClick={() => exportToCSV(payments, 'payments')}>
+            <Button variant="default" onClick={() => exportToCSV(payments, 'payments')} className="w-full sm:w-auto text-sm">
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
           </div>
 
           <Card>
-            <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Fee Type</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Payment Date</TableHead>
-                    <TableHead>Method</TableHead>
-                    <TableHead>Transaction ID</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredPayments.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">
-                            {payment.user_profiles?.first_name} {payment.user_profiles?.last_name}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {payment.user_profiles?.user_code}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{payment.fee_structures?.fee_type}</TableCell>
-                      <TableCell>{formatCurrency(payment.amount_paid)}</TableCell>
-                      <TableCell>
-                        {formatDate(payment.payment_date)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{payment.payment_method}</Badge>
-                      </TableCell>
-                      <TableCell className="font-mono text-sm">
-                        {payment.transaction_id}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={getStatusBadgeVariant(payment.status)}>
-                          {payment.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              {filteredPayments.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  No payments found
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="pending" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Pending Payment Approvals</CardTitle>
-              <CardDescription>Review and approve offline payment submissions</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {pendingPayments.map((payment) => (
-                  <div key={payment.id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-4">
-                          <div>
-                            <p className="font-medium">
-                              {payment.user_profiles?.first_name} {payment.user_profiles?.last_name}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {payment.user_profiles?.user_code} • {payment.user_profiles?.email}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="mt-2 grid grid-cols-4 gap-4">
-                          <div>
-                            <p className="text-sm text-gray-600">Fee Type</p>
-                            <p className="font-medium">{payment.fee_structures?.fee_type}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">Amount</p>
-                            <p className="font-medium">{formatCurrency(payment.amount_paid)}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">Payment Method</p>
-                            <Badge variant="outline">{payment.payment_method}</Badge>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">Transaction ID</p>
-                            <p className="font-mono text-sm">{payment.transaction_id}</p>
-                          </div>
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-2">
-                          Submitted: {formatDate(payment.created_at)}
-                        </p>
-                      </div>
-                      <div className="flex space-x-2 ml-4">
-                        <Button
-                          size="sm"
-                          variant="default"
-                          onClick={() => handleApprovePayment(payment.id)}
-                        >
-                          <Check className="h-4 w-4 mr-1" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleRejectPayment(payment.id)}
-                        >
-                          <X className="h-4 w-4 mr-1" />
-                          Reject
-                        </Button>
-                      </div>
-                    </div>
+            <CardContent className="p-4 sm:p-6 sm:pt-6">
+              <div className="space-y-2">
+                <div className="max-h-[400px] sm:max-h-[600px] overflow-y-auto">
+                  <div className="rounded-md border overflow-x-auto  max-h-[350px] sm:max-h-[450px] overflow-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs sm:text-sm min-w-[180px]">Student</TableHead>
+                          <TableHead className="text-xs sm:text-sm min-w-[150px]">Fee Type</TableHead>
+                          <TableHead className="text-xs sm:text-sm min-w-[100px]">Amount</TableHead>
+                          <TableHead className="text-xs sm:text-sm min-w-[160px]">Payment Date</TableHead>
+                          <TableHead className="text-xs sm:text-sm min-w-[120px]">Method</TableHead>
+                          <TableHead className="text-xs sm:text-sm min-w-[150px]">Transaction ID</TableHead>
+                          <TableHead className="text-xs sm:text-sm min-w-[100px]">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredPayments.map((payment) => (
+                          <TableRow key={payment.id}>
+                            <TableCell className="min-w-[180px]">
+                              <div>
+                                <p className="font-medium text-xs sm:text-sm">
+                                  {payment.user_profiles?.first_name} {payment.user_profiles?.last_name}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {payment.user_profiles?.user_code}
+                                </p>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-xs sm:text-sm min-w-[150px]">{payment.fee_structures?.fee_type}</TableCell>
+                            <TableCell className="text-xs sm:text-sm min-w-[100px]">{formatCurrency(payment.amount_paid)}</TableCell>
+                            <TableCell className="text-xs sm:text-sm min-w-[160px]">
+                              {formatDate(payment.payment_date)}
+                            </TableCell>
+                            <TableCell className="min-w-[120px]">
+                              <Badge variant="outline" className="text-xs">{payment.payment_method}</Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-xs min-w-[150px]">
+                              {payment.transaction_id}
+                            </TableCell>
+                            <TableCell className="min-w-[100px]">
+                              <Badge variant={getStatusBadgeVariant(payment.status)} className="text-xs">
+                                {payment.status}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
-                ))}
-                {pendingPayments.length === 0 && (
-                  <div className="text-center py-8">
-                    <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900">No Pending Payments</h3>
-                    <p className="text-muted-foreground">All payments have been processed</p>
+                </div>
+                {filteredPayments.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    No payments found
                   </div>
                 )}
               </div>
@@ -967,36 +903,114 @@ const FinanceManagement = ({ userProfile }) => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="reports" className="space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
+        <TabsContent value="pending" className="space-y-4 sm:space-y-6">
+          <Card>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Pending Payment Approvals</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Review and approve offline payment submissions</CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0">
+              <div className="space-y-3 sm:space-y-4 max-h-[500px] sm:max-h-[700px] overflow-y-auto">
+                {pendingPayments.map((payment) => (
+                  <div key={payment.id} className="border rounded-lg p-3 sm:p-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      <div className="flex-1 space-y-3">
+                        <div className="flex items-start space-x-3 sm:space-x-4">
+                          <div>
+                            <p className="font-medium text-sm sm:text-base">
+                              {payment.user_profiles?.first_name} {payment.user_profiles?.last_name}
+                            </p>
+                            <p className="text-xs sm:text-sm text-muted-foreground">
+                              {payment.user_profiles?.user_code} • {payment.user_profiles?.email}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                          <div>
+                            <p className="text-xs text-gray-600">Fee Type</p>
+                            <p className="font-medium text-xs sm:text-sm">{payment.fee_structures?.fee_type}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600">Amount</p>
+                            <p className="font-medium text-xs sm:text-sm">{formatCurrency(payment.amount_paid)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600">Payment Method</p>
+                            <Badge variant="outline" className="text-xs">{payment.payment_method}</Badge>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-600">Transaction ID</p>
+                            <p className="font-mono text-xs">{payment.transaction_id}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs sm:text-sm text-muted-foreground">
+                          Submitted: {formatDate(payment.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 lg:ml-4">
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => handleApprovePayment(payment.id)}
+                          className="w-full sm:w-auto text-xs"
+                        >
+                          <Check className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleRejectPayment(payment.id)}
+                          className="w-full sm:w-auto text-xs"
+                        >
+                          <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {pendingPayments.length === 0 && (
+                  <div className="text-center py-8 sm:py-12">
+                    <CheckCircle className="h-10 w-10 sm:h-12 sm:w-12 text-green-600 mx-auto mb-4" />
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">No Pending Payments</h3>
+                    <p className="text-muted-foreground text-sm">All payments have been processed</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="reports" className="space-y-4 sm:space-y-6">
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
             <Card>
-              <CardHeader>
-                <CardTitle>Financial Summary</CardTitle>
-                <CardDescription>Overview of financial performance</CardDescription>
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-base sm:text-lg">Financial Summary</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Overview of financial performance</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between">
+              <CardContent className="p-4 sm:p-6 pt-0">
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex justify-between text-sm">
                     <span>Total Revenue:</span>
                     <span className="font-medium">{formatCurrency(dashboardStats.totalRevenue)}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-sm">
                     <span>Collection Rate:</span>
                     <span className="font-medium">{dashboardStats.collectionRate.toFixed(1)}%</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-sm">
                     <span>Pending Payments:</span>
-                    <span className="font-medium">{dashboardStats.pendingPayments}</span>
-                  </div>
-                  <div className="flex justify-between">
+                    <span className="font-medium">{dashboardStats.pendingPayments}</span></div>
+                  <div className="flex justify-between text-sm">
                     <span>Total Students:</span>
                     <span className="font-medium">{dashboardStats.totalStudents}</span>
                   </div>
-                  <div className="flex justify-between border-t pt-4">
+                  <div className="flex justify-between border-t pt-3 sm:pt-4 text-sm">
                     <span>Active Fee Structures:</span>
                     <span className="font-medium">{feeStructures.filter(f => f.is_active).length}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-sm">
                     <span>Total Payments Processed:</span>
                     <span className="font-medium">{payments.length}</span>
                   </div>
@@ -1005,37 +1019,37 @@ const FinanceManagement = ({ userProfile }) => {
             </Card>
 
             <Card>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-                <CardDescription>Common reporting tasks</CardDescription>
+              <CardHeader className="p-4 sm:p-6">
+                <CardTitle className="text-base sm:text-lg">Quick Actions</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Common reporting tasks</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 sm:p-6 pt-0">
                 <div className="space-y-2">
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-xs sm:text-sm"
                     onClick={() => exportToCSV(payments, 'payment_report')}
                   >
-                    <Download className="h-4 w-4 mr-2" />
+                    <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                     Export Payment Report
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-xs sm:text-sm"
                     onClick={() => exportToCSV(feeStructures, 'fee_structure_report')}
                   >
-                    <Download className="h-4 w-4 mr-2" />
+                    <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                     Export Fee Structure Report
                   </Button>
-                  <Button variant="outline" className="w-full justify-start">
-                    <FileText className="h-4 w-4 mr-2" />
+                  <Button variant="outline" className="w-full justify-start text-xs sm:text-sm">
+                    <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                     Generate Monthly Report
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-xs sm:text-sm"
                   >
-                    <AlertCircle className="h-4 w-4 mr-2" />
+                    <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                     Overdue Payments Report
                   </Button>
                 </div>
@@ -1044,22 +1058,22 @@ const FinanceManagement = ({ userProfile }) => {
           </div>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Payment Method Distribution</CardTitle>
-              <CardDescription>Breakdown of payment methods used</CardDescription>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Payment Method Distribution</CardTitle>
+              <CardDescription className="text-xs sm:text-sm">Breakdown of payment methods used</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 sm:p-6 pt-0">
               <div className="space-y-2">
                 {['online', 'bank_transfer', 'cash', 'cheque'].map(method => {
                   const count = payments.filter(p => p.payment_method === method).length;
                   const percentage = payments.length > 0 ? (count / payments.length * 100).toFixed(1) : 0;
                   return (
-                    <div key={method} className="flex items-center justify-between">
+                    <div key={method} className="flex items-center justify-between text-sm">
                       <div className="flex items-center space-x-2">
-                        <Badge variant="outline" className="capitalize">{method.replace('_', ' ')}</Badge>
-                        <span className="text-sm text-muted-foreground">{count} payments</span>
+                        <Badge variant="outline" className="capitalize text-xs">{method.replace('_', ' ')}</Badge>
+                        <span className="text-xs sm:text-sm text-muted-foreground">{count} payments</span>
                       </div>
-                      <span className="font-medium">{percentage}%</span>
+                      <span className="font-medium text-xs sm:text-sm">{percentage}%</span>
                     </div>
                   );
                 })}
@@ -1070,40 +1084,42 @@ const FinanceManagement = ({ userProfile }) => {
       </Tabs>
 
       <Dialog open={isEditFeeDialogOpen} onOpenChange={setIsEditFeeDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="w-[95vw] max-w-2xl mx-auto max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Fee Structure</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-lg sm:text-xl">Edit Fee Structure</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
               Update the fee structure details
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit_fee_type">Fee Type *</Label>
+                <Label htmlFor="edit_fee_type" className="text-sm">Fee Type *</Label>
                 <Input
                   id="edit_fee_type"
                   value={feeForm.fee_type}
-                  onChange={(e) => setFeeForm({...feeForm, fee_type: e.target.value})}
+                  onChange={(e) => setFeeForm({ ...feeForm, fee_type: e.target.value })}
                   placeholder="e.g., Tuition Fee, Library Fee"
+                  className="text-sm"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit_amount">Amount (₹) *</Label>
+                <Label htmlFor="edit_amount" className="text-sm">Amount (₹) *</Label>
                 <Input
                   id="edit_amount"
                   type="number"
                   value={feeForm.amount}
-                  onChange={(e) => setFeeForm({...feeForm, amount: Number(e.target.value)})}
+                  onChange={(e) => setFeeForm({ ...feeForm, amount: Number(e.target.value) })}
                   placeholder="0.00"
+                  className="text-sm"
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit_academic_year">Academic Year</Label>
-                <Select value={feeForm.academic_year} onValueChange={(value) => setFeeForm({...feeForm, academic_year: value})}>
-                  <SelectTrigger>
+                <Label htmlFor="edit_academic_year" className="text-sm">Academic Year</Label>
+                <Select value={feeForm.academic_year} onValueChange={(value) => setFeeForm({ ...feeForm, academic_year: value })}>
+                  <SelectTrigger className="text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1114,9 +1130,9 @@ const FinanceManagement = ({ userProfile }) => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit_semester">Semester</Label>
-                <Select value={feeForm.semester} onValueChange={(value) => setFeeForm({...feeForm, semester: value})}>
-                  <SelectTrigger>
+                <Label htmlFor="edit_semester" className="text-sm">Semester</Label>
+                <Select value={feeForm.semester} onValueChange={(value) => setFeeForm({ ...feeForm, semester: value })}>
+                  <SelectTrigger className="text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1128,9 +1144,9 @@ const FinanceManagement = ({ userProfile }) => {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit_user_type">User Type</Label>
-              <Select value={feeForm.user_type} onValueChange={(value) => setFeeForm({...feeForm, user_type: value})}>
-                <SelectTrigger>
+              <Label htmlFor="edit_user_type" className="text-sm">User Type</Label>
+              <Select value={feeForm.user_type} onValueChange={(value) => setFeeForm({ ...feeForm, user_type: value })}>
+                <SelectTrigger className="text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1140,15 +1156,15 @@ const FinanceManagement = ({ userProfile }) => {
               </Select>
             </div>
           </div>
-          <div className="flex justify-end space-x-2">
+          <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:space-x-2">
             <Button variant="outline" onClick={() => {
               setIsEditFeeDialogOpen(false);
               setEditingFee(null);
               resetFeeForm();
-            }}>
+            }} className="text-sm">
               Cancel
             </Button>
-            <Button onClick={handleUpdateFeeStructure}>
+            <Button onClick={handleUpdateFeeStructure} className="text-sm">
               Update Fee Structure
             </Button>
           </div>

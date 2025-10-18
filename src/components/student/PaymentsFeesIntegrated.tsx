@@ -7,9 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { 
-  CreditCard, 
-  Receipt, 
+import {
+  CreditCard,
+  Receipt,
   Download,
   Calendar,
   DollarSign,
@@ -70,7 +70,7 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
         description: "Failed to load payment data. Using mock data for demonstration.",
         variant: "destructive",
       });
-      
+
       // Set mock data for demonstration
       setMockData();
     } finally {
@@ -228,7 +228,7 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
           title: "Payment Successful",
           description: `₹${amount} payment processed successfully.`,
         });
-        
+
         // Refresh data
         await fetchAllPaymentData();
         setPaymentDialog(false);
@@ -302,52 +302,52 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 px-3 sm:px-4 md:px-6 w-full max-w-full">
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <DollarSign className="h-5 w-5 text-red-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Due</p>
-                <p className="text-2xl font-bold text-red-600">{formatCurrency(totalDue)}</p>
+      <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <Card className="w-full">
+          <CardContent className="p-4 sm:p-5 md:p-6">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <DollarSign className="h-4 w-4 sm:h-5 sm:w-5 text-red-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Due</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-red-600 truncate">{formatCurrency(totalDue)}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <CheckCircle className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Paid</p>
-                <p className="text-2xl font-bold text-green-600">{formatCurrency(totalPaid)}</p>
+        <Card className="w-full">
+          <CardContent className="p-4 sm:p-5 md:p-6">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Total Paid</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-green-600 truncate">{formatCurrency(totalPaid)}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <AlertTriangle className="h-5 w-5 text-orange-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Overdue</p>
-                <p className="text-2xl font-bold text-orange-600">{overdueCount}</p>
+        <Card className="w-full">
+          <CardContent className="p-4 sm:p-5 md:p-6">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 text-orange-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Overdue</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-orange-600">{overdueCount}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <Clock className="h-5 w-5 text-blue-600" />
-              <div>
-                <p className="text-sm font-medium text-gray-600">Pending</p>
-                <p className="text-2xl font-bold text-blue-600">{pendingCount}</p>
+        <Card className="w-full">
+          <CardContent className="p-4 sm:p-5 md:p-6">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600">Pending</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-blue-600">{pendingCount}</p>
               </div>
             </div>
           </CardContent>
@@ -355,75 +355,84 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
       </div>
 
       {/* Main Content */}
-      <Tabs defaultValue="pending" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="pending">Pending Fees ({studentFees.filter(f => f.balance_due > 0).length})</TabsTrigger>
-          <TabsTrigger value="history">Payment History ({paymentHistory.length})</TabsTrigger>
-          <TabsTrigger value="reminders">Reminders ({feeReminders.length})</TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="pending" className="space-y-4 w-full">
+        <div className="w-full">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
+            <TabsTrigger value="pending" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
+              <span className="truncate">Pending ({studentFees.filter(f => f.balance_due > 0).length})</span>
+            </TabsTrigger>
+            <TabsTrigger value="history" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
+              <span className="truncate">History ({paymentHistory.length})</span>
+            </TabsTrigger>
+            <TabsTrigger value="reminders" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
+              <span className="truncate">Reminders ({feeReminders.length})</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="pending" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <CreditCard className="h-5 w-5" />
+          <Card className="w-full">
+            <CardHeader className="p-4 sm:p-5 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
                 <span>Outstanding Fees</span>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="p-4 sm:p-5 md:p-6">
+              <div className="space-y-3 sm:space-y-4 max-h-[600px] overflow-y-auto pr-2">
                 {studentFees.filter(fee => fee.balance_due > 0).map((fee) => (
-                  <div key={fee.fee_structure_id} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold capitalize text-lg">{fee.fee_type} Fee</h3>
-                        <p className="text-sm text-gray-600">{fee.description}</p>
-                        <p className="text-sm text-gray-500">{fee.academic_year} • {fee.semester}</p>
+                  <div key={fee.fee_structure_id} className="border rounded-lg p-3 sm:p-4 space-y-3 w-full">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold capitalize text-sm sm:text-base md:text-lg break-words">{fee.fee_type} Fee</h3>
+                        <p className="text-xs sm:text-sm text-gray-600 break-words">{fee.description}</p>
+                        <p className="text-xs sm:text-sm text-gray-500">{fee.academic_year} • {fee.semester}</p>
                       </div>
-                      <div className="text-right space-y-1">
+                      <div className="text-left sm:text-right flex-shrink-0 space-y-1">
                         {getStatusBadge(fee.payment_status)}
-                        <p className="text-sm text-gray-600">Due: {formatDate(fee.due_date || '')}</p>
+                        <p className="text-xs sm:text-sm text-gray-600">Due: {formatDate(fee.due_date || '')}</p>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-4">
+
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                           <div>
-                            <p className="text-sm text-gray-600">Total Fee</p>
-                            <p className="font-semibold">{formatCurrency(fee.fee_amount)}</p>
+                            <p className="text-xs sm:text-sm text-gray-600">Total Fee</p>
+                            <p className="font-semibold text-sm sm:text-base">{formatCurrency(fee.fee_amount)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-gray-600">Paid</p>
-                            <p className="font-semibold text-green-600">{formatCurrency(fee.total_paid)}</p>
+                            <p className="text-xs sm:text-sm text-gray-600">Paid</p>
+                            <p className="font-semibold text-sm sm:text-base text-green-600">{formatCurrency(fee.total_paid)}</p>
                           </div>
                           <div>
-                            <p className="text-sm text-gray-600">Balance</p>
-                            <p className="font-semibold text-red-600">{formatCurrency(fee.balance_due)}</p>
+                            <p className="text-xs sm:text-sm text-gray-600">Balance</p>
+                            <p className="font-semibold text-sm sm:text-base text-red-600">{formatCurrency(fee.balance_due)}</p>
                           </div>
                         </div>
                       </div>
-                      
-                      <div className="space-x-2">
+
+                      <div className="flex-shrink-0">
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={() => openPaymentDialog(fee)}
                           disabled={fee.balance_due <= 0}
+                          className="w-full sm:w-auto text-xs sm:text-sm"
                         >
-                          <CreditCard className="w-4 h-4 mr-2" />
+                          <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2" />
                           Pay Now
                         </Button>
                       </div>
                     </div>
                   </div>
                 ))}
-                
+
                 {studentFees.filter(fee => fee.balance_due > 0).length === 0 && (
-                  <div className="text-center py-8">
-                    <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900">All Fees Paid!</h3>
-                    <p className="text-gray-600">You have no outstanding fee payments.</p>
+                  <div className="text-center py-6 sm:py-8">
+                    <CheckCircle className="h-10 w-10 sm:h-12 sm:w-12 text-green-600 mx-auto mb-3 sm:mb-4" />
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">All Fees Paid!</h3>
+                    <p className="text-sm sm:text-base text-gray-600">You have no outstanding fee payments.</p>
                   </div>
                 )}
               </div>
@@ -432,33 +441,33 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
         </TabsContent>
 
         <TabsContent value="history" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Receipt className="h-5 w-5" />
+          <Card className="w-full">
+            <CardHeader className="p-4 sm:p-5 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Receipt className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
                 <span>Payment History</span>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="p-4 sm:p-5 md:p-6">
+              <div className="space-y-3 sm:space-y-4 max-h-[600px] overflow-y-auto pr-2">
                 {paymentHistory.map((payment) => {
                   const feeInfo = studentFees.find(f => f.fee_structure_id === payment.fee_structure_id);
                   return (
-                    <div key={payment.id} className="border rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-semibold capitalize">
+                    <div key={payment.id} className="border rounded-lg p-3 sm:p-4 w-full">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold capitalize text-sm sm:text-base break-words">
                             {feeInfo?.fee_type || 'Fee'} Payment
                           </h3>
-                          <p className="text-sm text-gray-600">
+                          <p className="text-xs sm:text-sm text-gray-600 break-words">
                             Transaction ID: {payment.transaction_id}
                           </p>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-xs sm:text-sm text-gray-500">
                             {formatDate(payment.payment_date)}
                           </p>
                         </div>
-                        <div className="text-right space-y-1">
-                          <p className="font-semibold text-lg text-green-600">
+                        <div className="text-left sm:text-right flex-shrink-0 space-y-1">
+                          <p className="font-semibold text-base sm:text-lg text-green-600">
                             {formatCurrency(payment.amount_paid)}
                           </p>
                           {getMethodBadge(payment.payment_method)}
@@ -467,12 +476,12 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
                     </div>
                   );
                 })}
-                
+
                 {paymentHistory.length === 0 && (
-                  <div className="text-center py-8">
-                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900">No Payment History</h3>
-                    <p className="text-gray-600">Your payment history will appear here.</p>
+                  <div className="text-center py-6 sm:py-8">
+                    <FileText className="h-10 w-10 sm:h-12 sm:w-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">No Payment History</h3>
+                    <p className="text-sm sm:text-base text-gray-600">Your payment history will appear here.</p>
                   </div>
                 )}
               </div>
@@ -481,43 +490,43 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
         </TabsContent>
 
         <TabsContent value="reminders" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <AlertCircle className="h-5 w-5" />
+          <Card className="w-full">
+            <CardHeader className="p-4 sm:p-5 md:p-6">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
                 <span>Fee Reminders</span>
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
+            <CardContent className="p-4 sm:p-5 md:p-6">
+              <div className="space-y-3 sm:space-y-4 max-h-[600px] overflow-y-auto pr-2">
                 {feeReminders.map((reminder) => (
-                  <div key={reminder.id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold">
+                  <div key={reminder.id} className="border rounded-lg p-3 sm:p-4 w-full">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-sm sm:text-base break-words">
                           {reminder.fee_structures?.fee_type} Fee Reminder
                         </h3>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-xs sm:text-sm text-gray-600">
                           Due Date: {formatDate(reminder.due_date)}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-orange-600">
+                      <div className="text-left sm:text-right flex-shrink-0">
+                        <p className="font-semibold text-sm sm:text-base text-orange-600">
                           {formatCurrency(reminder.due_amount)}
                         </p>
-                        <Badge className="bg-orange-100 text-orange-800">
+                        <Badge className="bg-orange-100 text-orange-800 text-xs">
                           {reminder.status}
                         </Badge>
                       </div>
                     </div>
                   </div>
                 ))}
-                
+
                 {feeReminders.length === 0 && (
-                  <div className="text-center py-8">
-                    <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-900">No Active Reminders</h3>
-                    <p className="text-gray-600">You have no pending fee reminders.</p>
+                  <div className="text-center py-6 sm:py-8">
+                    <CheckCircle className="h-10 w-10 sm:h-12 sm:w-12 text-green-600 mx-auto mb-3 sm:mb-4" />
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">No Active Reminders</h3>
+                    <p className="text-sm sm:text-base text-gray-600">You have no pending fee reminders.</p>
                   </div>
                 )}
               </div>
@@ -528,25 +537,25 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
 
       {/* Payment Dialog */}
       <Dialog open={paymentDialog} onOpenChange={setPaymentDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[95vw] max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Make Payment</DialogTitle>
+            <DialogTitle className="text-base sm:text-lg">Make Payment</DialogTitle>
           </DialogHeader>
           {selectedFee && (
             <div className="space-y-4">
-              <div className="border rounded-lg p-4">
-                <h3 className="font-semibold capitalize">{selectedFee.fee_type} Fee</h3>
-                <p className="text-sm ">{selectedFee.description}</p>
-                <div className="mt-2 space-y-1">
-                  <div className="flex justify-between">
+              <div className="border rounded-lg p-3 sm:p-4">
+                <h3 className="font-semibold capitalize text-sm sm:text-base break-words">{selectedFee.fee_type} Fee</h3>
+                <p className="text-xs sm:text-sm text-gray-600 break-words">{selectedFee.description}</p>
+                <div className="mt-2 space-y-1 text-xs sm:text-sm">
+                  <div className="flex justify-between gap-2">
                     <span>Total Fee:</span>
                     <span className="font-semibold">{formatCurrency(selectedFee.fee_amount)}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span>Already Paid:</span>
                     <span className="font-semibold text-green-600">{formatCurrency(selectedFee.total_paid)}</span>
                   </div>
-                  <div className="flex justify-between border-t pt-1">
+                  <div className="flex justify-between gap-2 border-t pt-1">
                     <span>Balance Due:</span>
                     <span className="font-semibold text-red-600">{formatCurrency(selectedFee.balance_due)}</span>
                   </div>
@@ -555,7 +564,7 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
 
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="payment-amount">Payment Amount</Label>
+                  <Label htmlFor="payment-amount" className="text-xs sm:text-sm">Payment Amount</Label>
                   <Input
                     id="payment-amount"
                     type="number"
@@ -564,29 +573,30 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
                     placeholder="Enter amount"
                     max={selectedFee.balance_due}
                     min="1"
+                    className="text-xs sm:text-sm"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="payment-method">Payment Method</Label>
+                  <Label htmlFor="payment-method" className="text-xs sm:text-sm">Payment Method</Label>
                   <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                    <SelectTrigger>
+                    <SelectTrigger className="text-xs sm:text-sm">
                       <SelectValue placeholder="Select payment method" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="online">Online Payment</SelectItem>
-                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="cheque">Cheque</SelectItem>
+                      <SelectItem value="online" className="text-xs sm:text-sm">Online Payment</SelectItem>
+                      <SelectItem value="bank_transfer" className="text-xs sm:text-sm">Bank Transfer</SelectItem>
+                      <SelectItem value="cash" className="text-xs sm:text-sm">Cash</SelectItem>
+                      <SelectItem value="cheque" className="text-xs sm:text-sm">Cheque</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <div className="flex space-x-2">
+                <div className="flex flex-col xs:flex-row gap-2">
                   <Button
                     onClick={handlePaymentSubmit}
                     disabled={processing}
-                    className="flex-1"
+                    className="flex-1 text-xs sm:text-sm"
                   >
                     {processing ? "Processing..." : `Pay ${formatCurrency(parseFloat(paymentAmount) || 0)}`}
                   </Button>
@@ -594,6 +604,7 @@ const PaymentsFees: React.FC<PaymentsFeesProps> = ({ studentData }) => {
                     variant="outline"
                     onClick={() => setPaymentDialog(false)}
                     disabled={processing}
+                    className="text-xs sm:text-sm"
                   >
                     Cancel
                   </Button>

@@ -52,7 +52,6 @@ const AuditLogs = ({ userProfile, adminRoles }: AuditLogsProps) => {
         return;
       }
 
-      // Use a simpler query approach to avoid RLS issues
       const { data: logsData, error } = await supabase
         .from('audit_logs')
         .select(`
@@ -70,7 +69,6 @@ const AuditLogs = ({ userProfile, adminRoles }: AuditLogsProps) => {
 
       if (error) {
         console.error('Error loading audit logs:', error);
-        // Set mock data for demonstration
         const mockLogs = [
           {
             id: '1',
@@ -89,7 +87,6 @@ const AuditLogs = ({ userProfile, adminRoles }: AuditLogsProps) => {
         ];
         setAuditLogs(mockLogs);
       } else {
-        // Transform the data to match our interface
         const transformedLogs = logsData?.map(log => ({
           ...log,
           admin_user: {
@@ -206,10 +203,10 @@ const AuditLogs = ({ userProfile, adminRoles }: AuditLogsProps) => {
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading audit logs...</p>
+            <p className="mt-2 text-gray-600 text-sm sm:text-base">Loading audit logs...</p>
           </div>
         </CardContent>
       </Card>
@@ -217,106 +214,111 @@ const AuditLogs = ({ userProfile, adminRoles }: AuditLogsProps) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <Card>
-        <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="flex items-center space-x-2">
-                <Activity className="w-5 h-5" />
+        <CardHeader className="p-4 sm:p-6">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
+            <div className="space-y-1.5">
+              <CardTitle className="flex items-center space-x-2 text-lg sm:text-xl">
+                <Activity className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 <span>Audit Logs</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs sm:text-sm mt-2">
                 Track all administrative actions and system changes. 
                 {isSuperAdmin() ? ' Full access to all logs.' : ' Access limited to your actions and relevant logs.'}
               </CardDescription>
             </div>
-            <Button onClick={exportLogs} variant="outline" disabled={filteredLogs.length === 0}>
+            <Button 
+              onClick={exportLogs} 
+              variant="default" 
+              disabled={filteredLogs.length === 0}
+              className="w-full sm:w-60"
+            >
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="p-4 sm:p-6 sm:pt-0 space-y-4">
           {/* Search and Filters */}
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3 sm:w-4 sm:h-4" />
               <Input
                 placeholder="Search audit logs..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-9 sm:pl-10 text-sm"
               />
             </div>
             <Select value={filterModule} onValueChange={setFilterModule}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full sm:w-48 text-sm">
                 <SelectValue placeholder="Filter by module" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Modules</SelectItem>
-                <SelectItem value="users">Users</SelectItem>
-                <SelectItem value="roles">Roles</SelectItem>
-                <SelectItem value="courses">Courses</SelectItem>
-                <SelectItem value="events">Events</SelectItem>
-                <SelectItem value="finance">Finance</SelectItem>
-                <SelectItem value="system">System</SelectItem>
+                <SelectItem value="all" className="text-sm">All Modules</SelectItem>
+                <SelectItem value="users" className="text-sm">Users</SelectItem>
+                <SelectItem value="roles" className="text-sm">Roles</SelectItem>
+                <SelectItem value="courses" className="text-sm">Courses</SelectItem>
+                <SelectItem value="events" className="text-sm">Events</SelectItem>
+                <SelectItem value="finance" className="text-sm">Finance</SelectItem>
+                <SelectItem value="system" className="text-sm">System</SelectItem>
               </SelectContent>
             </Select>
             <Select value={filterAction} onValueChange={setFilterAction}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full sm:w-48 text-sm">
                 <SelectValue placeholder="Filter by action" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Actions</SelectItem>
-                <SelectItem value="create">Create</SelectItem>
-                <SelectItem value="update">Update</SelectItem>
-                <SelectItem value="delete">Delete</SelectItem>
-                <SelectItem value="role_assigned">Role Assigned</SelectItem>
-                <SelectItem value="role_revoked">Role Revoked</SelectItem>
-                <SelectItem value="login">Login</SelectItem>
+                <SelectItem value="all" className="text-sm">All Actions</SelectItem>
+                <SelectItem value="create" className="text-sm">Create</SelectItem>
+                <SelectItem value="update" className="text-sm">Update</SelectItem>
+                <SelectItem value="delete" className="text-sm">Delete</SelectItem>
+                <SelectItem value="role_assigned" className="text-sm">Role Assigned</SelectItem>
+                <SelectItem value="role_revoked" className="text-sm">Role Revoked</SelectItem>
+                <SelectItem value="login" className="text-sm">Login</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           {/* Audit Logs Table */}
           {filteredLogs.length > 0 ? (
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date & Time</TableHead>
-                    <TableHead>Admin User</TableHead>
-                    <TableHead>Action</TableHead>
-                    <TableHead>Module</TableHead>
-                    <TableHead>Description</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[160px]">Date & Time</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[180px]">Admin User</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[120px]">Action</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[100px]">Module</TableHead>
+                    <TableHead className="text-xs sm:text-sm min-w-[200px]">Description</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredLogs.map((log) => (
                     <TableRow key={log.id}>
-                      <TableCell className="text-sm">
+                      <TableCell className="text-xs sm:text-sm min-w-[160px]">
                         {new Date(log.created_at).toLocaleString()}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-[180px]">
                         <div>
-                          <div className="font-medium text-sm">
+                          <div className="font-medium text-xs sm:text-sm">
                             {log.admin_user.first_name} {log.admin_user.last_name}
                           </div>
                           <div className="text-xs text-gray-500">{log.admin_user.email}</div>
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge className={getActionBadgeColor(log.action_type)}>
+                      <TableCell className="min-w-[120px]">
+                        <Badge className={`${getActionBadgeColor(log.action_type)} text-xs`}>
                           {log.action_type.replace('_', ' ')}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <Badge className={getModuleBadgeColor(log.module || 'system')}>
+                      <TableCell className="min-w-[100px]">
+                        <Badge className={`${getModuleBadgeColor(log.module || 'system')} text-xs`}>
                           {log.module || 'system'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm max-w-md">
+                      <TableCell className="text-xs sm:text-sm min-w-[200px] max-w-md">
                         <div className="truncate">{log.action_description || 'No description'}</div>
                       </TableCell>
                     </TableRow>
@@ -325,10 +327,10 @@ const AuditLogs = ({ userProfile, adminRoles }: AuditLogsProps) => {
               </Table>
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-500">
-              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-medium mb-2">No Audit Logs Found</h3>
-              <p>No audit logs found matching your criteria or no logs have been recorded yet.</p>
+            <div className="text-center py-8 sm:py-12 text-gray-500 px-4">
+              <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 sm:mb-4 text-gray-300" />
+              <h3 className="text-base sm:text-lg font-medium mb-2">No Audit Logs Found</h3>
+              <p className="text-sm sm:text-base">No audit logs found matching your criteria or no logs have been recorded yet.</p>
             </div>
           )}
         </CardContent>

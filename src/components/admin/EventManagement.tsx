@@ -64,7 +64,7 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
   const loadEvents = async () => {
     try {
       setIsLoading(true);
-      
+
       // Fetch events with organizer details and participant count
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
@@ -117,8 +117,8 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
   const handleAddEvent = async () => {
     try {
       // Validate required fields
-      if (!eventForm.event_name || !eventForm.event_type || !eventForm.start_date || 
-          !eventForm.end_date || !eventForm.location || !eventForm.description) {
+      if (!eventForm.event_name || !eventForm.event_type || !eventForm.start_date ||
+        !eventForm.end_date || !eventForm.location || !eventForm.description) {
         toast({
           title: "Validation Error",
           description: "Please fill in all required fields.",
@@ -169,7 +169,7 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
 
       setEvents([eventWithCount, ...events]);
       setIsAddDialogOpen(false);
-      
+
       // Reset form
       setEventForm({
         event_name: '',
@@ -208,7 +208,7 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
       }
 
       // Update local state
-      setEvents(events.map(event => 
+      setEvents(events.map(event =>
         event.id === eventId ? { ...event, is_active: isActive } : event
       ));
 
@@ -227,7 +227,7 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
   };
 
   const filteredEvents = events.filter(event => {
-    const matchesSearch = 
+    const matchesSearch =
       event.event_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
       event.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -276,43 +276,43 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
             <div>
               <CardTitle className="flex items-center space-x-2">
-                <Calendar className="w-5 h-5" />
+                <Calendar className="w-5 h-5 mr-2" />
                 <span>Event & Community Management</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className='mt-2'>
                 Organize and manage campus events, workshops, and community activities.
               </CardDescription>
             </div>
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button className="w-full sm:w-60 ">
                   <Plus className="w-4 h-4 mr-2" />
                   Create Event
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl">
+              <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Create New Event</DialogTitle>
+                  <DialogTitle>New Event</DialogTitle>
                   <DialogDescription>
                     Organize a new event or activity for the campus community.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="grid grid-cols-2 gap-4 py-4">
-                  <div className="col-span-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+                  <div className="col-span-1 md:col-span-2">
                     <Label htmlFor="event_name">Event Name *</Label>
                     <Input
                       id="event_name"
                       value={eventForm.event_name}
-                      onChange={(e) => setEventForm({...eventForm, event_name: e.target.value})}
+                      onChange={(e) => setEventForm({ ...eventForm, event_name: e.target.value })}
                       placeholder="e.g., Annual Tech Fest"
                     />
                   </div>
                   <div>
                     <Label htmlFor="event_type">Event Type *</Label>
-                    <Select value={eventForm.event_type} onValueChange={(value) => setEventForm({...eventForm, event_type: value})}>
+                    <Select value={eventForm.event_type} onValueChange={(value) => setEventForm({ ...eventForm, event_type: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select type" />
                       </SelectTrigger>
@@ -332,7 +332,7 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                       id="max_participants"
                       type="number"
                       value={eventForm.max_participants}
-                      onChange={(e) => setEventForm({...eventForm, max_participants: parseInt(e.target.value) || 100})}
+                      onChange={(e) => setEventForm({ ...eventForm, max_participants: parseInt(e.target.value) || 100 })}
                     />
                   </div>
                   <div>
@@ -341,7 +341,7 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                       id="start_date"
                       type="datetime-local"
                       value={eventForm.start_date}
-                      onChange={(e) => setEventForm({...eventForm, start_date: e.target.value})}
+                      onChange={(e) => setEventForm({ ...eventForm, start_date: e.target.value })}
                     />
                   </div>
                   <div>
@@ -350,43 +350,43 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                       id="end_date"
                       type="datetime-local"
                       value={eventForm.end_date}
-                      onChange={(e) => setEventForm({...eventForm, end_date: e.target.value})}
+                      onChange={(e) => setEventForm({ ...eventForm, end_date: e.target.value })}
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-1 md:col-span-2">
                     <Label htmlFor="location">Location *</Label>
                     <Input
                       id="location"
                       value={eventForm.location}
-                      onChange={(e) => setEventForm({...eventForm, location: e.target.value})}
+                      onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
                       placeholder="Event venue or location"
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-1 md:col-span-2">
                     <Label htmlFor="description">Description *</Label>
                     <Textarea
                       id="description"
                       value={eventForm.description}
-                      onChange={(e) => setEventForm({...eventForm, description: e.target.value})}
+                      onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
                       placeholder="Event description and details"
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-1 md:col-span-2">
                     <Label className="flex items-center space-x-2">
                       <input
                         type="checkbox"
                         checked={eventForm.registration_required}
-                        onChange={(e) => setEventForm({...eventForm, registration_required: e.target.checked})}
+                        onChange={(e) => setEventForm({ ...eventForm, registration_required: e.target.checked })}
                       />
                       <span>Registration Required</span>
                     </Label>
                   </div>
                 </div>
-                <div className="flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:space-x-2">
+                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="w-full sm:w-auto">
                     Cancel
                   </Button>
-                  <Button onClick={handleAddEvent}>
+                  <Button onClick={handleAddEvent} className="w-full sm:w-auto">
                     Create Event
                   </Button>
                 </div>
@@ -423,7 +423,7 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
           </div>
 
           {/* Events Table */}
-          <div className="rounded-md border">
+          <div className="rounded-md border max-h-[350px] sm:max-h-[450px] overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -495,8 +495,8 @@ const EventManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                           <Users className="w-3 h-3" />
                         </Button>
                         {userProfile.id === event.organizer_id && (
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant={event.is_active ? "destructive" : "default"}
                             onClick={() => handleUpdateEventStatus(event.id, !event.is_active)}
                           >

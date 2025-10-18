@@ -184,19 +184,19 @@ const FacilityManagement = ({ userProfile }: { userProfile: UserProfile }) => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
             <div>
               <CardTitle className="flex items-center space-x-2">
-                <Building className="w-5 h-5" />
+                <Building className="w-5 h-5 mr-2" />
                 <span>Facility & Logistics Management</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className='mt-2'>
                 Manage campus facilities, room bookings, and maintenance schedules.
               </CardDescription>
             </div>
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button className="w-full sm:w-60">
                   <Plus className="w-4 h-4 mr-2" />
                   Add Facility
                 </Button>
@@ -296,7 +296,7 @@ const FacilityManagement = ({ userProfile }: { userProfile: UserProfile }) => {
 
           {/* Facilities Table */}
           {filteredFacilities.length > 0 ? (
-            <div className="rounded-md border">
+            <div className="rounded-md border max-h-[350px] sm:max-h-[450px] overflow-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

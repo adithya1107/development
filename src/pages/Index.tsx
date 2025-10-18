@@ -25,7 +25,7 @@ const Index = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         setSession(session);
-        
+
         if (session?.user) {
           // User is authenticated, they'll be redirected by NavigationWrapper
           // based on their profile data
@@ -41,20 +41,7 @@ const Index = () => {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Industrial Grid Background */}
-      <div className="fixed inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
-      
-      <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
-        <div className="w-full max-w-6xl mx-auto">
-            <div className="flex justify-center">
-              <MultiStepLogin />
-            </div>
-          </div>
-          
-          
-        </div>
-      </div>
+    <MultiStepLogin />
   );
 };
 

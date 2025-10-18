@@ -196,7 +196,7 @@ const CourseManagement = ({ userProfile }: { userProfile: UserProfile }) => {
   };
 
   const filteredCourses = courses.filter(course => {
-    const matchesSearch = 
+    const matchesSearch =
       course.course_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       course.course_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (course.instructor && `${course.instructor.first_name} ${course.instructor.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -223,37 +223,37 @@ const CourseManagement = ({ userProfile }: { userProfile: UserProfile }) => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
             <div>
               <CardTitle className="flex items-center space-x-2">
-                <BookOpen className="w-5 h-5" />
+                <BookOpen className="w-5 h-5 mr-2" />
                 <span>Course & Academic Management</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className='mt-2'>
                 Manage courses, enrollment, and academic schedules for your institution.
               </CardDescription>
             </div>
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button className="w-full sm:w-60">
                   <Plus className="w-4 h-4 mr-2" />
                   Add Course
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl">
+              <DialogContent className="max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Add New Course</DialogTitle>
                   <DialogDescription>
                     Create a new course for the academic program.
                   </DialogDescription>
                 </DialogHeader>
-                <div className="grid grid-cols-2 gap-4 py-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
                   <div>
                     <Label htmlFor="course_code">Course Code *</Label>
                     <Input
                       id="course_code"
                       value={courseForm.course_code}
-                      onChange={(e) => setCourseForm({...courseForm, course_code: e.target.value})}
+                      onChange={(e) => setCourseForm({ ...courseForm, course_code: e.target.value })}
                       placeholder="e.g., CS101"
                     />
                   </div>
@@ -263,21 +263,21 @@ const CourseManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                       id="credits"
                       type="number"
                       value={courseForm.credits}
-                      onChange={(e) => setCourseForm({...courseForm, credits: parseInt(e.target.value) || 0})}
+                      onChange={(e) => setCourseForm({ ...courseForm, credits: parseInt(e.target.value) || 0 })}
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-1 md:col-span-2">
                     <Label htmlFor="course_name">Course Name *</Label>
                     <Input
                       id="course_name"
                       value={courseForm.course_name}
-                      onChange={(e) => setCourseForm({...courseForm, course_name: e.target.value})}
+                      onChange={(e) => setCourseForm({ ...courseForm, course_name: e.target.value })}
                       placeholder="Full course name"
                     />
                   </div>
                   <div>
                     <Label htmlFor="semester">Semester</Label>
-                    <Select value={courseForm.semester} onValueChange={(value) => setCourseForm({...courseForm, semester: value})}>
+                    <Select value={courseForm.semester} onValueChange={(value) => setCourseForm({ ...courseForm, semester: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select semester" />
                       </SelectTrigger>
@@ -290,7 +290,7 @@ const CourseManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                   </div>
                   <div>
                     <Label htmlFor="instructor">Faculty Instructor</Label>
-                    <Select value={courseForm.instructor_id} onValueChange={(value) => setCourseForm({...courseForm, instructor_id: value})}>
+                    <Select value={courseForm.instructor_id} onValueChange={(value) => setCourseForm({ ...courseForm, instructor_id: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select faculty member" />
                       </SelectTrigger>
@@ -303,12 +303,12 @@ const CourseManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="col-span-2">
+                  <div className="col-span-1 md:col-span-2">
                     <Label htmlFor="description">Description</Label>
                     <Textarea
                       id="description"
                       value={courseForm.description}
-                      onChange={(e) => setCourseForm({...courseForm, description: e.target.value})}
+                      onChange={(e) => setCourseForm({ ...courseForm, description: e.target.value })}
                       placeholder="Course description and objectives"
                     />
                   </div>
@@ -318,15 +318,15 @@ const CourseManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                       id="max_students"
                       type="number"
                       value={courseForm.max_students}
-                      onChange={(e) => setCourseForm({...courseForm, max_students: parseInt(e.target.value) || 0})}
+                      onChange={(e) => setCourseForm({ ...courseForm, max_students: parseInt(e.target.value) || 0 })}
                     />
                   </div>
                 </div>
-                <div className="flex justify-end space-x-2">
-                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting}>
+                <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:space-x-2">
+                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSubmitting} className="w-full sm:w-auto">
                     Cancel
                   </Button>
-                  <Button onClick={handleAddCourse} disabled={isSubmitting}>
+                  <Button onClick={handleAddCourse} disabled={isSubmitting} className="w-full sm:w-auto">
                     {isSubmitting ? 'Creating...' : 'Create Course'}
                   </Button>
                 </div>
@@ -361,7 +361,7 @@ const CourseManagement = ({ userProfile }: { userProfile: UserProfile }) => {
 
           {/* Courses Table */}
           {filteredCourses.length > 0 ? (
-            <div className="rounded-md border">
+            <div className="rounded-md border  max-h-[350px] sm:max-h-[450px] overflow-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -384,8 +384,8 @@ const CourseManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {course.instructor ? 
-                          `${course.instructor.first_name} ${course.instructor.last_name}` 
+                        {course.instructor ?
+                          `${course.instructor.first_name} ${course.instructor.last_name}`
                           : 'Not Assigned'
                         }
                       </TableCell>
@@ -426,8 +426,8 @@ const CourseManagement = ({ userProfile }: { userProfile: UserProfile }) => {
               <AlertCircle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-medium mb-2">No Courses Found</h3>
               <p>No courses found matching your criteria. Create your first course to get started.</p>
-              <Button 
-                className="mt-4" 
+              <Button
+                className="mt-4"
                 onClick={() => setIsAddDialogOpen(true)}
               >
                 <Plus className="w-4 h-4 mr-2" />

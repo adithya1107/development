@@ -22,6 +22,7 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
   const { toast } = useToast();
 
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const shortDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const timeSlots = [
     '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', 
     '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM'
@@ -263,35 +264,106 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
 
   return (
     <PermissionWrapper permission="view_attendance">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6 px-2 sm:px-0">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
           <div>
-            <h2 className="text-2xl font-bold">Schedule & Timetable</h2>
-            <p className="text-muted-foreground">View your class schedule including extra classes</p>
+            <h2 className="text-xl sm:text-2xl font-bold">Schedule & Timetable</h2>
+            <p className="text-sm text-muted-foreground">View your class schedule including extra classes</p>
           </div>
         </div>
 
-        <Tabs defaultValue="weekly" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="weekly">Weekly View</TabsTrigger>
-            <TabsTrigger value="calendar">Calendar View</TabsTrigger>
-            <TabsTrigger value="daily">Daily View</TabsTrigger>
+        <Tabs defaultValue="daily" className="space-y-4">
+          <TabsList className="w-full sm:w-auto grid grid-cols-3">
+            <TabsTrigger value="daily" className="text-xs sm:text-sm">Daily</TabsTrigger>
+            <TabsTrigger value="weekly" className="text-xs sm:text-sm">Weekly</TabsTrigger>
+            <TabsTrigger value="calendar" className="text-xs sm:text-sm">Calendar</TabsTrigger>
           </TabsList>
+
+          {/* Daily View - Now default for mobile */}
+          <TabsContent value="daily" className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg sm:text-xl">Today's Classes</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {todayClasses.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    No classes scheduled for today
+                  </div>
+                ) : (
+                  todayClasses.map((cls, index) => (
+                    <div key={index} className={`flex items-start space-x-3 p-3 sm:p-4 border rounded-lg ${
+                      cls.is_extra_class ? 'border-l-4 border-l-blue-500' : ''
+                    }`}>
+                      <div className="flex-shrink-0">
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-lg flex items-center justify-center ${
+                          cls.is_extra_class 
+                            ? 'bg-blue-50 text-blue-600'
+                            : 'bg-primary/10 text-primary'
+                        }`}>
+                          {cls.is_extra_class ? (
+                            <Star className="h-5 w-5 sm:h-6 sm:w-6" />
+                          ) : (
+                            <BookOpen className="h-5 w-5 sm:h-6 sm:w-6" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-medium text-sm sm:text-base">{cls.course_name}</h3>
+                          {cls.is_extra_class && (
+                            <Badge variant="secondary" className="text-xs capitalize">
+                              {cls.class_type}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs sm:text-sm text-muted-foreground">
+                          {cls.course_code}
+                          {cls.is_extra_class && cls.title && ` • ${cls.title}`}
+                        </p>
+                        {cls.description && (
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{cls.description}</p>
+                        )}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 mt-2 text-xs text-muted-foreground gap-1 sm:gap-0">
+                          <span className="flex items-center">
+                            <Clock className="h-3 w-3 mr-1 flex-shrink-0" />
+                            <span className="truncate">{formatTime(cls.start_time)} - {formatTime(cls.end_time)}</span>
+                          </span>
+                          {cls.room_location && (
+                            <span className="flex items-center">
+                              <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+                              <span className="truncate">{cls.room_location}</span>
+                            </span>
+                          )}
+                          {cls.instructor_name && (
+                            <span className="flex items-center">
+                              <User className="h-3 w-3 mr-1 flex-shrink-0" />
+                              <span className="truncate">{cls.instructor_name}</span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Weekly View */}
           <TabsContent value="weekly" className="space-y-4">
             <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle>Weekly Schedule</CardTitle>
-                  <div className="flex items-center space-x-2">
+              <CardHeader className="pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <CardTitle className="text-lg sm:text-xl">Weekly Schedule</CardTitle>
+                  <div className="flex items-center justify-between sm:justify-start space-x-2">
                     <Button variant="outline" size="sm" onClick={() => navigateWeek('prev')}>
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="text-sm font-medium">
+                    <span className="text-xs sm:text-sm font-medium px-2">
                       {currentWeek.toLocaleDateString('en-US', { 
-                        month: 'long', 
+                        month: 'short', 
                         day: 'numeric', 
                         year: 'numeric' 
                       })}
@@ -302,8 +374,68 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-8 gap-2">
+              <CardContent className="overflow-x-auto">
+                {/* Mobile/Tablet: List view */}
+                <div className="block lg:hidden space-y-4">
+                  {getWeekDays(currentWeek).map((date, dayIndex) => {
+                    const dayClasses = getClassesForDay(dayIndex, date);
+                    return (
+                      <div key={dayIndex} className="border rounded-lg overflow-hidden">
+                        <div className={`p-3 ${
+                          isToday(date) ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="text-sm font-medium">{daysOfWeek[dayIndex]}</div>
+                              <div className="text-xs opacity-80">
+                                {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </div>
+                            </div>
+                            <Badge variant="secondary" className="text-xs">
+                              {dayClasses.length} {dayClasses.length === 1 ? 'class' : 'classes'}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="p-3 space-y-2">
+                          {dayClasses.length === 0 ? (
+                            <p className="text-xs text-muted-foreground text-center py-2">No classes</p>
+                          ) : (
+                            dayClasses
+                              .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                              .map((cls, clsIndex) => (
+                                <div key={clsIndex} className={`p-2 rounded border text-xs ${getClassTypeStyle(cls)}`}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1 min-w-0">
+                                      {cls.is_extra_class && (
+                                        <Star className="h-3 w-3 flex-shrink-0" />
+                                      )}
+                                      <span className="font-medium truncate">{cls.course_code}</span>
+                                    </div>
+                                    <span className="text-xs whitespace-nowrap">
+                                      {formatTime(cls.start_time)}
+                                    </span>
+                                  </div>
+                                  {cls.room_location && (
+                                    <div className="text-xs opacity-80 mt-1 truncate">
+                                      📍 {cls.room_location}
+                                    </div>
+                                  )}
+                                  {cls.is_extra_class && (
+                                    <div className="text-xs opacity-70 mt-1 capitalize">
+                                      {cls.class_type}
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop: Grid view */}
+                <div className="hidden lg:grid lg:grid-cols-8 gap-2 min-w-max">
                   {/* Time column */}
                   <div className="space-y-2">
                     <div className="h-12"></div>
@@ -361,85 +493,14 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
             </Card>
           </TabsContent>
 
-          {/* Daily View */}
-          <TabsContent value="daily" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Today's Classes</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {todayClasses.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No classes scheduled for today
-                  </div>
-                ) : (
-                  todayClasses.map((cls, index) => (
-                    <div key={index} className={`flex items-center space-x-4 p-4 border rounded-lg ${
-                      cls.is_extra_class ? 'border-l-4 border-l-blue-500' : ''
-                    }`}>
-                      <div className="flex-shrink-0">
-                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                          cls.is_extra_class 
-                            ? 'bg-blue-50 text-blue-600'
-                            : 'bg-primary/10 text-primary'
-                        }`}>
-                          {cls.is_extra_class ? (
-                            <Star className="h-6 w-6" />
-                          ) : (
-                            <BookOpen className="h-6 w-6" />
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 flex-wrap">
-                          <h3 className="font-medium">{cls.course_name}</h3>
-                          {cls.is_extra_class && (
-                            <Badge variant="secondary" className="text-xs capitalize">
-                              {cls.class_type}
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {cls.course_code}
-                          {cls.is_extra_class && cls.title && ` • ${cls.title}`}
-                        </p>
-                        {cls.description && (
-                          <p className="text-xs text-muted-foreground mt-1">{cls.description}</p>
-                        )}
-                        <div className="flex items-center space-x-4 mt-2 text-xs text-muted-foreground flex-wrap">
-                          <span className="flex items-center">
-                            <Clock className="h-3 w-3 mr-1" />
-                            {formatTime(cls.start_time)} - {formatTime(cls.end_time)}
-                          </span>
-                          {cls.room_location && (
-                            <span className="flex items-center">
-                              <MapPin className="h-3 w-3 mr-1" />
-                              {cls.room_location}
-                            </span>
-                          )}
-                          {cls.instructor_name && (
-                            <span className="flex items-center">
-                              <User className="h-3 w-3 mr-1" />
-                              {cls.instructor_name}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           {/* Calendar View */}
           <TabsContent value="calendar" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
               <Card className="lg:col-span-1">
-                <CardHeader>
-                  <CardTitle>Select Date</CardTitle>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg sm:text-xl">Select Date</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex justify-center">
                   <Calendar
                     mode="single"
                     selected={selectedDate}
@@ -450,66 +511,66 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
               </Card>
 
               <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>
-                    Classes on {selectedDate.toLocaleDateString('en-US', { 
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base sm:text-lg">
+                    {selectedDate.toLocaleDateString('en-US', { 
                       weekday: 'long', 
-                      year: 'numeric', 
-                      month: 'long', 
-                      day: 'numeric' 
+                      month: 'short', 
+                      day: 'numeric',
+                      year: 'numeric'
                     })}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-3">
                   {getClassesForDay(selectedDate.getDay(), selectedDate).length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
+                    <div className="text-center py-8 text-muted-foreground text-sm">
                       No classes scheduled for this day
                     </div>
                   ) : (
                     getClassesForDay(selectedDate.getDay(), selectedDate)
                       .sort((a, b) => a.start_time.localeCompare(b.start_time))
                       .map((cls, index) => (
-                      <div key={index} className={`flex items-center space-x-4 p-4 border rounded-lg ${
+                      <div key={index} className={`flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 border rounded-lg ${
                         cls.is_extra_class ? 'border-l-4 border-l-blue-500' : ''
                       }`}>
-                        <div className="flex-shrink-0 space-y-2">
-                          <Badge variant={cls.is_extra_class ? "secondary" : "outline"}>
+                        <div className="flex-shrink-0 flex gap-2">
+                          <Badge variant={cls.is_extra_class ? "secondary" : "outline"} className="text-xs">
                             {cls.course_code}
                           </Badge>
                           {cls.is_extra_class && (
-                            <Badge variant="outline" className="text-xs capitalize block">
+                            <Badge variant="outline" className="text-xs capitalize">
                               {cls.class_type}
                             </Badge>
                           )}
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2">
-                            <h4 className="font-medium">{cls.course_name}</h4>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium text-sm sm:text-base">{cls.course_name}</h4>
                             {cls.is_extra_class && (
-                              <Star className="h-4 w-4 text-blue-500" />
+                              <Star className="h-4 w-4 text-blue-500 flex-shrink-0" />
                             )}
                           </div>
                           {cls.is_extra_class && cls.title && (
-                            <p className="text-sm text-blue-600 font-medium">{cls.title}</p>
+                            <p className="text-xs sm:text-sm text-blue-600 font-medium">{cls.title}</p>
                           )}
                           {cls.description && (
-                            <p className="text-sm text-muted-foreground mt-1">{cls.description}</p>
+                            <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-2">{cls.description}</p>
                           )}
-                          <div className="flex items-center space-x-4 mt-1 text-sm text-muted-foreground flex-wrap">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 mt-2 text-xs sm:text-sm text-muted-foreground gap-1 sm:gap-0">
                             <span className="flex items-center">
-                              <Clock className="h-3 w-3 mr-1" />
-                              {formatTime(cls.start_time)} - {formatTime(cls.end_time)}
+                              <Clock className="h-3 w-3 mr-1 flex-shrink-0" />
+                              <span className="truncate">{formatTime(cls.start_time)} - {formatTime(cls.end_time)}</span>
                             </span>
                             {cls.room_location && (
                               <span className="flex items-center">
-                                <MapPin className="h-3 w-3 mr-1" />
-                                {cls.room_location}
+                                <MapPin className="h-3 w-3 mr-1 flex-shrink-0" />
+                                <span className="truncate">{cls.room_location}</span>
                               </span>
                             )}
                             {cls.instructor_name && (
                               <span className="flex items-center">
-                                <User className="h-3 w-3 mr-1" />
-                                {cls.instructor_name}
+                                <User className="h-3 w-3 mr-1 flex-shrink-0" />
+                                <span className="truncate">{cls.instructor_name}</span>
                               </span>
                             )}
                           </div>

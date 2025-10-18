@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,7 +51,6 @@ const RoleManagement = ({ userProfile }: RoleManagementProps) => {
 
   const loadRoleAssignments = async () => {
     try {
-      // For now, we'll show mock data since the admin_roles table might not be accessible yet
       const mockAssignments: AdminRoleAssignment[] = [
         {
           id: '1',
@@ -112,7 +110,6 @@ const RoleManagement = ({ userProfile }: RoleManagementProps) => {
     }
 
     try {
-      // For now, we'll simulate the assignment since the table might not be accessible
       toast({
         title: "Success",
         description: "Role assignment simulated successfully. Database integration pending.",
@@ -134,7 +131,6 @@ const RoleManagement = ({ userProfile }: RoleManagementProps) => {
 
   const revokeRole = async (roleId: string, targetUserId: string, roleType: string) => {
     try {
-      // For now, we'll simulate the revocation
       toast({
         title: "Success",
         description: "Role revocation simulated successfully. Database integration pending.",
@@ -171,10 +167,10 @@ const RoleManagement = ({ userProfile }: RoleManagementProps) => {
   if (isLoading) {
     return (
       <Card>
-        <CardContent className="p-6">
+        <CardContent className="p-4 sm:p-6">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Loading role assignments...</p>
+            <p className="mt-2 text-gray-600 text-sm sm:text-base">Loading role assignments...</p>
           </div>
         </CardContent>
       </Card>
@@ -182,43 +178,43 @@ const RoleManagement = ({ userProfile }: RoleManagementProps) => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <Card>
-        <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="flex items-center space-x-2">
-                <Shield className="w-5 h-5" />
+        <CardHeader className="p-4 sm:p-6">
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4">
+            <div className="space-y-1.5">
+              <CardTitle className="flex items-center space-x-2 text-lg sm:text-xl">
+                <Shield className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 <span>Role Management</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs sm:text-sm mt-2">
                 Assign and manage admin roles for your college. Only Super Admins can manage roles.
               </CardDescription>
             </div>
             <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
               <DialogTrigger asChild>
-                <Button>
+                <Button className="w-full sm:w-60">
                   <Plus className="w-4 h-4 mr-2" />
                   Assign Role
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="w-[95vw] max-w-md mx-auto">
                 <DialogHeader>
-                  <DialogTitle>Assign Admin Role</DialogTitle>
-                  <DialogDescription>
+                  <DialogTitle className="text-lg sm:text-xl">Assign Admin Role</DialogTitle>
+                  <DialogDescription className="text-xs sm:text-sm">
                     Select a user and role to assign admin privileges.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
-                    <Label>Select User</Label>
+                    <Label className="text-sm">Select User</Label>
                     <Select value={selectedUser} onValueChange={setSelectedUser}>
-                      <SelectTrigger>
+                      <SelectTrigger className="text-sm">
                         <SelectValue placeholder="Choose a user" />
                       </SelectTrigger>
                       <SelectContent>
                         {availableUsers.map((user) => (
-                          <SelectItem key={user.id} value={user.id}>
+                          <SelectItem key={user.id} value={user.id} className="text-sm">
                             {user.first_name} {user.last_name} ({user.user_code})
                           </SelectItem>
                         ))}
@@ -226,24 +222,24 @@ const RoleManagement = ({ userProfile }: RoleManagementProps) => {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Select Role</Label>
+                    <Label className="text-sm">Select Role</Label>
                     <Select value={selectedRole} onValueChange={setSelectedRole}>
-                      <SelectTrigger>
+                      <SelectTrigger className="text-sm">
                         <SelectValue placeholder="Choose a role" />
                       </SelectTrigger>
                       <SelectContent>
                         {adminRoleTypes.map((role) => (
-                          <SelectItem key={role.value} value={role.value}>
+                          <SelectItem key={role.value} value={role.value} className="text-sm">
                             <div>
                               <div className="font-medium">{role.label}</div>
-                              <div className="text-sm text-gray-500">{role.description}</div>
+                              <div className="text-xs text-gray-500">{role.description}</div>
                             </div>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button onClick={assignRole} className="w-full">
+                  <Button onClick={assignRole} className="w-full text-sm">
                     Assign Role
                   </Button>
                 </div>
@@ -251,50 +247,51 @@ const RoleManagement = ({ userProfile }: RoleManagementProps) => {
             </Dialog>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-md border">
+        <CardContent className="p-4 sm:p-6 sm:pt-0">
+          {/* Horizontally Scrollable Table */}
+          <div className="rounded-md border overflow-x-auto max-h-[350px] sm:max-h-[450px] overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Assigned Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="text-xs sm:text-sm min-w-[200px]">User</TableHead>
+                  <TableHead className="text-xs sm:text-sm min-w-[180px]">Role</TableHead>
+                  <TableHead className="text-xs sm:text-sm min-w-[120px]">Assigned Date</TableHead>
+                  <TableHead className="text-xs sm:text-sm min-w-[100px]">Status</TableHead>
+                  <TableHead className="text-xs sm:text-sm min-w-[120px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {roleAssignments.map((assignment) => (
                   <TableRow key={assignment.id}>
-                    <TableCell>
+                    <TableCell className="min-w-[200px]">
                       <div>
-                        <div className="font-medium">
+                        <div className="font-medium text-xs sm:text-sm">
                           {assignment.user_profiles.first_name} {assignment.user_profiles.last_name}
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-xs text-gray-500">
                           {assignment.user_profiles.email}
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <Badge className={getRoleBadgeColor(assignment.admin_role_type)}>
+                    <TableCell className="min-w-[180px]">
+                      <Badge className={`${getRoleBadgeColor(assignment.admin_role_type)} text-xs`}>
                         {getRoleDisplayName(assignment.admin_role_type)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell className="text-xs sm:text-sm min-w-[120px]">
                       {new Date(assignment.assigned_at).toLocaleDateString()}
                     </TableCell>
-                    <TableCell>
-                      <Badge variant={assignment.is_active ? "default" : "secondary"}>
+                    <TableCell className="min-w-[100px]">
+                      <Badge variant={assignment.is_active ? "default" : "secondary"} className="text-xs">
                         {assignment.is_active ? "Active" : "Revoked"}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-[120px]">
                       {assignment.is_active && assignment.admin_role_type !== 'super_admin' && (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-red-600 hover:text-red-700"
+                          className="text-red-600 hover:text-red-700 text-xs"
                           onClick={() => revokeRole(assignment.id, assignment.user_id, assignment.admin_role_type)}
                         >
                           <Trash2 className="w-3 h-3 mr-1" />
@@ -309,7 +306,7 @@ const RoleManagement = ({ userProfile }: RoleManagementProps) => {
           </div>
 
           {roleAssignments.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-gray-500 text-sm">
               No role assignments found.
             </div>
           )}
@@ -318,21 +315,21 @@ const RoleManagement = ({ userProfile }: RoleManagementProps) => {
 
       {/* Role Hierarchy Info */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Users className="w-5 h-5" />
+        <CardHeader className="p-4 sm:p-6">
+          <CardTitle className="flex items-center space-x-2 text-lg sm:text-xl">
+            <Users className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
             <span>Admin Role Hierarchy</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {adminRoleTypes.map((role, index) => (
-              <div key={role.value} className="p-4 border rounded-lg">
+        <CardContent className="p-4 sm:p-6 sm:pt-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            {adminRoleTypes.map((role) => (
+              <div key={role.value} className="p-3 sm:p-4 border rounded-lg">
                 <div className="flex items-center space-x-2 mb-2">
-                  <Award className="w-4 h-4" />
-                  <h4 className="font-medium">{role.label}</h4>
+                  <Award className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <h4 className="font-medium text-sm sm:text-base">{role.label}</h4>
                 </div>
-                <p className="text-sm text-gray-600">{role.description}</p>
+                <p className="text-xs sm:text-sm text-gray-600">{role.description}</p>
               </div>
             ))}
           </div>

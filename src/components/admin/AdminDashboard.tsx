@@ -3,11 +3,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Users, 
-  Shield, 
-  Settings, 
-  FileText, 
+import {
+  Users,
+  Shield,
+  Settings,
+  FileText,
   BookOpen,
   Building,
   Calendar,
@@ -122,7 +122,7 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
         setIsLoading(false);
       }
     };
-    
+
     if (sessionData) {
       loadData();
     } else {
@@ -144,7 +144,7 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
   const loadUserProfile = async () => {
     try {
       console.log('Loading user profile with session data:', sessionData);
-      
+
       if (sessionData && sessionData.user_id) {
         const userProfile: UserProfile = {
           id: sessionData.user_id,
@@ -169,7 +169,7 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
               user_uuid: sessionData.user_id,
               college_uuid: sessionData.college_id
             });
-            console.log('Admin roles data:', rolesData);
+          console.log('Admin roles data:', rolesData);
 
           if (rolesError) {
             console.warn('Error loading admin roles:', rolesError);
@@ -184,7 +184,7 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
               permissions: role.permissions,
               assigned_at: role.assigned_at
             })) || [];
-            
+
             if (formattedRoles.length === 0 && sessionData.user_type === 'admin') {
               setAdminRoles([{
                 role_type: 'super_admin',
@@ -204,7 +204,7 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
           }]);
         }
       }
-      
+
       console.log('User profile loaded successfully');
     } catch (error) {
       console.error('Error loading user profile:', error);
@@ -225,7 +225,7 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
     try {
       if (!sessionData?.college_id) return;
 
-      const timeout = new Promise((_, reject) => 
+      const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Request timeout')), 50000)
       );
 
@@ -270,14 +270,14 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
     try {
       await supabase.auth.signOut();
       localStorage.removeItem('colcord_user');
-      
+
       if (typeof toast === 'function') {
         toast({
           title: "Logged out successfully",
           description: "You have been logged out of the admin dashboard.",
         });
       }
-      
+
       navigate('/');
     } catch (error) {
       console.error('Logout error:', error);
@@ -299,8 +299,8 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
   };
 
   const isSuperAdmin = (): boolean => {
-    return adminRoles.some(role => role.role_type === 'super_admin') || 
-           userProfile?.user_type === 'admin';
+    return adminRoles.some(role => role.role_type === 'super_admin') ||
+      userProfile?.user_type === 'admin';
   };
 
   // Mock recent activities data for better UI
@@ -316,6 +316,18 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
       description: 'Database Management course content modified',
       time: '1 hour ago',
       type: 'course'
+    },
+    {
+      title: 'Event Created',
+      description: 'Annual Tech Fest 2024 scheduled',
+      time: '2 hours ago',
+      type: 'event'
+    },
+    {
+      title: 'Payment Received',
+      description: 'Fee payment processed for Semester 6',
+      time: '3 hours ago',
+      type: 'payment'
     },
     {
       title: 'Event Created',
@@ -394,7 +406,8 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
       {/* Header with glassmorphic design */}
       <div className="border-b border-white/10 bg-black/20 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 py-4 sm:py-6">
+
             <div>
               <h1 className="text-3xl font-bold text-white">
                 {getGreeting()}, {userProfile.first_name}!
@@ -408,190 +421,198 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
                 )}
               </p>
             </div>
-            <div className="flex items-center space-x-4">
-              <Badge className="bg-purple-500/20 text-purple-300 border-purple-400/30 font-medium px-3 py-1">
+            <div className="flex flex-col md:flex-row md:items-center gap-3 md:space-x-4 w-full md:w-fit">
+              <Badge className="bg-purple-500/20 text-purple-300 border-purple-400/30 font-medium px-3 py-1 self-start md:self-auto">
                 {userProfile.hierarchy_level.replace('_', ' ').toUpperCase()}
               </Badge>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="border-white/20 bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 hover:border-white/30"
-              >
-                <Bell className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Alerts</span>
-                {dashboardStats.pendingApprovals > 0 && (
-                  <Badge className="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5">
-                    {dashboardStats.pendingApprovals}
-                  </Badge>
-                )}
-              </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={handleLogout} 
-                className="border-white/20 bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 hover:border-white/30"
-              >
-                <LogOut className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Logout</span>
-              </Button>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-auto border-white/20 bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 hover:border-white/30"
+                >
+                  <Bell className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Alerts</span>
+                  {dashboardStats.pendingApprovals > 0 && (
+                    <Badge className="ml-2 bg-red-500 text-white text-xs px-1.5 py-0.5">
+                      {dashboardStats.pendingApprovals}
+                    </Badge>
+                  )}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="w-auto border-white/20 bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 hover:border-white/30"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Logout</span>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 space-y-8 overflow-x-hidden">
+
         <div className="space-y-8 animate-fade-in">
           {/* Overview Dashboard - Always Visible */}
           <div className="space-y-8">
-              {/* Stats Cards with Modern Styling */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card className="border-white/10 bg-card/50 backdrop-blur-sm hover:border-purple-400/30 transition-all duration-300 hover-translate-up">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
-                    <div className="p-3 rounded-lg bg-blue-500/20">
-                      <Users className="h-5 w-5 text-blue-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-card-foreground">{dashboardStats.totalUsers}</div>
-                    <p className="text-xs text-white/60 mt-1 font-mono">
-                      {dashboardStats.activeUsers} active users
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-white/10 bg-card/50 backdrop-blur-sm hover:border-green-400/30 transition-all duration-300 hover-translate-up">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Active Courses</CardTitle>
-                    <div className="p-3 rounded-lg bg-green-500/20">
-                      <BookOpen className="h-5 w-5 text-green-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-card-foreground">{dashboardStats.totalCourses}</div>
-                    <p className="text-xs text-white/60 mt-1 font-mono">
-                      Across all departments
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-white/10 bg-card/50 backdrop-blur-sm hover:border-purple-400/30 transition-all duration-300 hover-translate-up">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Active Events</CardTitle>
-                    <div className="p-3 rounded-lg bg-purple-500/20">
-                      <Calendar className="h-5 w-5 text-purple-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-card-foreground">{dashboardStats.totalEvents}</div>
-                    <p className="text-xs text-white/60 mt-1 font-mono">
-                      This semester
-                    </p>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-white/10 bg-card/50 backdrop-blur-sm hover:border-orange-400/30 transition-all duration-300 hover-translate-up">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">Pending Tasks</CardTitle>
-                    <div className="p-3 rounded-lg bg-orange-500/20">
-                      <AlertCircle className="h-5 w-5 text-orange-400" />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-card-foreground">{dashboardStats.pendingApprovals}</div>
-                    <p className="text-xs text-white/60 mt-1 font-mono">
-                      Requires attention
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Quick Actions with Enhanced Design */}
-                <Card className="border-white/10 bg-card/50 backdrop-blur-sm">
-                  <CardHeader>
-                    <CardTitle className="text-card-foreground">Quick Actions</CardTitle>
-                    <CardDescription>Common administrative tasks</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {quickActions.map((action, index) => {
-                      const Icon = action.icon;
-                      return (
-                        <div 
-                          key={index}
-                          className="flex items-center space-x-4 p-4 rounded-lg border border-white/10 hover:border-purple-400/30 hover:bg-white/5 cursor-pointer transition-all duration-300 hover-translate-up"
-                          onClick={action.action}
-                        >
-                          <div className="p-3 rounded-lg bg-purple-500/20">
-                            <Icon className="h-5 w-5 text-purple-400" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="font-medium text-card-foreground">{action.title}</p>
-                            <p className="text-sm text-muted-foreground">{action.description}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-
-                {/* Recent Activity with Enhanced Design */}
-                <Card className="border-white/10 bg-card/50 backdrop-blur-sm">
-                  <CardHeader>
-                    <CardTitle className="text-card-foreground">Recent Activity</CardTitle>
-                    <CardDescription>Latest system activities and updates</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {recentActivities.map((activity, index) => (
-                      <div key={index} className="flex items-start space-x-4 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors duration-300">
-                        <div className="w-2 h-2 bg-purple-400 rounded-full mt-3 animate-pulse-indicator"></div>
-                        <div className="flex-1">
-                          <p className="font-medium text-card-foreground">{activity.title}</p>
-                          <p className="text-sm text-muted-foreground">{activity.description}</p>
-                          <p className="text-xs text-white/40 font-mono mt-1">{activity.time}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* System Health Status */}
-              <Card className="border-white/10 bg-card/50 backdrop-blur-sm">
-                <CardHeader>
-                  <CardTitle className="text-card-foreground flex items-center space-x-2">
-                    <Activity className="h-5 w-5 text-green-400" />
-                    <span>System Status</span>
-                  </CardTitle>
-                  <CardDescription>Current system health and performance metrics</CardDescription>
+            {/* Stats Cards with Modern Styling */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 gap-y-8">
+              <Card className="border-white/10 bg-card/50 backdrop-blur-sm hover:border-purple-400/30 transition-all duration-300 hover-translate-up">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+                  <div className="p-3 rounded-lg bg-blue-500/20">
+                    <Users className="h-5 w-5 text-blue-400" />
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                      <div>
-                        <p className="text-sm font-medium text-card-foreground">Database</p>
-                        <p className="text-xs text-green-400">Operational</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                      <div>
-                        <p className="text-sm font-medium text-card-foreground">API Services</p>
-                        <p className="text-xs text-green-400">Healthy</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
-                      <div>
-                        <p className="text-sm font-medium text-card-foreground">Storage</p>
-                        <p className="text-xs text-yellow-400">85% Used</p>
-                      </div>
-                    </div>
-                  </div>
+                  <div className="text-3xl font-bold text-card-foreground">{dashboardStats.totalUsers}</div>
+                  <p className="text-xs text-white/60 mt-1 font-mono">
+                    {dashboardStats.activeUsers} active users
+                  </p>
                 </CardContent>
               </Card>
+
+              <Card className="border-white/10 bg-card/50 backdrop-blur-sm hover:border-green-400/30 transition-all duration-300 hover-translate-up">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Active Courses</CardTitle>
+                  <div className="p-3 rounded-lg bg-green-500/20">
+                    <BookOpen className="h-5 w-5 text-green-400" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-card-foreground">{dashboardStats.totalCourses}</div>
+                  <p className="text-xs text-white/60 mt-1 font-mono">
+                    Across all departments
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-white/10 bg-card/50 backdrop-blur-sm hover:border-purple-400/30 transition-all duration-300 hover-translate-up">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Active Events</CardTitle>
+                  <div className="p-3 rounded-lg bg-purple-500/20">
+                    <Calendar className="h-5 w-5 text-purple-400" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-card-foreground">{dashboardStats.totalEvents}</div>
+                  <p className="text-xs text-white/60 mt-1 font-mono">
+                    This semester
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-white/10 bg-card/50 backdrop-blur-sm hover:border-orange-400/30 transition-all duration-300 hover-translate-up">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Pending Tasks</CardTitle>
+                  <div className="p-3 rounded-lg bg-orange-500/20">
+                    <AlertCircle className="h-5 w-5 text-orange-400" />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-card-foreground">{dashboardStats.pendingApprovals}</div>
+                  <p className="text-xs text-white/60 mt-1 font-mono">
+                    Requires attention
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+              {/* Quick Actions with Enhanced Design */}
+              <Card className="h-[510px] border-white/20 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-md shadow-2xl overflow-hidden group">
+                <CardHeader className="sticky top-0 z-10 bg-gradient-to-b from-card/95 to-card/80 backdrop-blur-sm border-b border-white/10 pb-4">
+                  <CardTitle className="text-card-foreground text-lg sm:text-xl">Quick Actions</CardTitle>
+                  <CardDescription className="text-sm">Common administrative tasks</CardDescription>
+                </CardHeader>
+                <CardContent className="h-[calc(100%-100px)] overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent hover:scrollbar-thumb-white/30 scroll-smooth space-y-3 sm:space-y-4 p-4 sm:p-6">
+                  {quickActions.map((action, index) => {
+                    const Icon = action.icon;
+                    return (
+                      <div
+                        key={index}
+                        className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4 p-4 rounded-lg border border-white/10 hover:border-purple-400/40 hover:bg-white/10 cursor-pointer transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/10 hover:-translate-y-0.5 will-change-transform"
+                        onClick={action.action}
+                      >
+                        <div className="p-3 rounded-lg bg-purple-500/20 group-hover:bg-purple-500/30 transition-colors">
+                          <Icon className="h-5 w-5 text-purple-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{action.title}</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-1">{action.description}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+
+              {/* Recent Activity with Enhanced Design */}
+              <Card className="h-[510px] border-white/20 bg-gradient-to-br from-card/60 to-card/40 backdrop-blur-md shadow-2xl overflow-hidden group">
+                <CardHeader className="sticky top-0 z-10 bg-gradient-to-b from-card/95 to-card/80 backdrop-blur-sm border-b border-white/10 pb-4">
+                  <CardTitle className="text-card-foreground text-lg sm:text-xl">Recent Activity</CardTitle>
+                  <CardDescription className="text-sm">Latest system activities and updates</CardDescription>
+                </CardHeader>
+                <CardContent className="h-[calc(100%-100px)] overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent hover:scrollbar-thumb-white/30 scroll-smooth space-y-3 sm:space-y-4 p-4 sm:p-6 ">
+                  {recentActivities.map((activity, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row sm:items-start sm:space-x-4 space-y-2 sm:space-y-0 p-3 sm:p-4 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 transition-all duration-300 hover:shadow-md hover:shadow-purple-500/5 will-change-transform">
+                      <div className="flex-shrink-0">
+                        <div className="w-2 h-2 bg-purple-400 rounded-full mt-1.5 sm:mt-3 animate-pulse shadow-lg shadow-purple-400/50"></div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{activity.title}</p>
+                        <p className="text-xs sm:text-sm text-muted-foreground leading-snug line-clamp-2">{activity.description}</p>
+                        <p className="text-[11px] sm:text-xs text-white/40 font-mono mt-1">{activity.time}</p>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* System Health Status */}
+            <Card className="border-white/10 bg-card/50 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="text-card-foreground flex items-center space-x-2">
+                  <Activity className="h-5 w-5 text-green-400" />
+                  <span>System Status</span>
+                </CardTitle>
+                <CardDescription>Current system health and performance metrics</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                    <div>
+                      <p className="text-sm font-medium text-card-foreground">Database</p>
+                      <p className="text-xs text-green-400">Operational</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                    <div>
+                      <p className="text-sm font-medium text-card-foreground">API Services</p>
+                      <p className="text-xs text-green-400">Healthy</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse"></div>
+                    <div>
+                      <p className="text-sm font-medium text-card-foreground">Storage</p>
+                      <p className="text-xs text-yellow-400">85% Used</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

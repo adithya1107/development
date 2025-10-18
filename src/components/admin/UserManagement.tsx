@@ -200,10 +200,10 @@ const UserManagement = ({ userProfile, adminRoles }: UserManagementProps) => {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <Users className="w-5 h-5" />
+            <Users className="w-5 h-5 mr-2" />
             <span>User Management</span>
           </CardTitle>
-          <CardDescription>
+          <CardDescription className='ml-6 mt-2 sm:ml-0'>
             Manage users in your college ecosystem. View, edit, and control user access based on your admin privileges.
           </CardDescription>
         </CardHeader>
@@ -237,7 +237,7 @@ const UserManagement = ({ userProfile, adminRoles }: UserManagementProps) => {
           </div>
 
           {/* Users Table */}
-          <div className="rounded-md border">
+          <div className="rounded-md border max-h-[350px] sm:max-h-[450px] overflow-auto">
             <Table>
               <TableHeader>
                 <TableRow>

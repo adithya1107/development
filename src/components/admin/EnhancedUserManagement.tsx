@@ -35,17 +35,17 @@ const EnhancedUserManagement = ({ userProfile, adminRoles }: EnhancedUserManagem
 
   return (
     <div className="space-y-6">
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="users" className="flex items-center space-x-2">
-            <Users className="w-4 h-4" />
-            <span>User Management</span>
-          </TabsTrigger>
-          <TabsTrigger value="onboarding" className="flex items-center space-x-2">
-            <UserPlus className="w-4 h-4" />
-            <span>User Onboarding</span>
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4 w-full">
+        <TabsList className="grid w-full grid-cols-2 h-auto">
+        <TabsTrigger value="users" className="flex items-center space-x-2">
+          <Users className="w-4 h-4" />
+          <span className="inline">User Management</span>
+        </TabsTrigger>
+        <TabsTrigger value="onboarding" className="flex items-center space-x-2">
+          <UserPlus className="w-4 h-4" />
+          <span className="inline">User Onboarding</span>
+        </TabsTrigger>
+      </TabsList>
 
         <TabsContent value="users">
           <UserManagement userProfile={userProfile} adminRoles={adminRoles} />

@@ -22,12 +22,12 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
   const [courseGrades, setCourseGrades] = useState<any[]>([]);
   const [learningProgress, setLearningProgress] = useState<any>({});
   const [loading, setLoading] = useState(true);
-  
+
   // StudentGrades state
   const [grades, setGrades] = useState<any[]>([]);
   const [quizSubmissions, setQuizSubmissions] = useState<any[]>([]);
   const [gradesLoading, setGradesLoading] = useState(false);
-  
+
   const { toast } = useToast();
 
   // StudentGrades data fetching functions
@@ -113,7 +113,7 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
       const submissionsWithDetails = submissions.map(submission => {
         const quiz = quizzesData?.find(q => q.id === submission.quiz_id);
         const className = classesData?.find(c => c.id === quiz?.class_id)?.name || 'Unknown Class';
-        
+
         return {
           ...submission,
           quizzes: quiz ? {
@@ -338,7 +338,7 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
     }
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
         {/* Overall Grades */}
         <Card className="card-minimal glass-effect border-primary/20">
           <CardHeader className="border-b border-primary/20">
@@ -388,7 +388,7 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
                             <Calculator className="w-4 h-4 text-accent" />
                             Grade Breakdown
                           </h4>
-                          
+
                           {/* Quiz Scores */}
                           {(grade.grade_breakdown as any)?.quiz_scores && Object.keys((grade.grade_breakdown as any).quiz_scores).length > 0 && (
                             <div className="space-y-2">
@@ -467,10 +467,10 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
             ) : (
               <div className="space-y-3">
                 {quizSubmissions.map((submission) => {
-                  const percentage = submission.quizzes?.total_points > 0 
-                    ? (submission.score / submission.quizzes.total_points) * 100 
+                  const percentage = submission.quizzes?.total_points > 0
+                    ? (submission.score / submission.quizzes.total_points) * 100
                     : 0;
-                  
+
                   return (
                     <div key={submission.id} className="flex justify-between items-center p-3 glass-effect rounded border border-primary/20 hover:border-accent/40 transition-all">
                       <div className="flex-1">
@@ -518,209 +518,213 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
 
   return (
     <PermissionWrapper permission="view_submit_assignments">
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-0">
           <div>
-            <h2 className="text-2xl font-bold">Courses & Learning Snapshot</h2>
+            <h2 className="text-xl sm:text-2xl font-bold">Courses & Learning Snapshot</h2>
             <p className="text-muted-foreground">Track your academic progress and course materials</p>
           </div>
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-6">
+        <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4 w-ful">
+          <Card className="hover:shadow-md transition-all duration-300 hover:border-role-student/20 cursor-pointer hover:scale-[1.01] sm:hover:scale-[1.03] md:hover:scale-105">
+            <CardContent className="p-3 sm:p-4 md:p-5">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Enrolled Courses</p>
-                  <p className="text-2xl font-bold">{enrolledCourses.length}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate mb-1">Enrolled Courses</p>
+                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-foreground truncate">{enrolledCourses.length}</p>
                 </div>
-                <BookOpen className="h-8 w-8 text-primary" />
+                <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
+          <Card className="hover:shadow-md transition-all duration-300 hover:border-role-student/20 cursor-pointer hover:scale-[1.01] sm:hover:scale-[1.03] md:hover:scale-105">
+            <CardContent className="p-3 sm:p-4 md:p-5">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Overall Progress</p>
-                  <p className="text-2xl font-bold">
-                    {enrolledCourses.length > 0 
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate mb-1">Overall Progress</p>
+                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-foreground truncate">
+                    {enrolledCourses.length > 0
                       ? Math.round(enrolledCourses.reduce((sum, course) => sum + course.progress.progress, 0) / enrolledCourses.length)
                       : 0}%
                   </p>
                 </div>
-                <TrendingUp className="h-8 w-8 text-green-600" />
+                <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
+          <Card className="hover:shadow-md transition-all duration-300 hover:border-role-student/20 cursor-pointer hover:scale-[1.01] sm:hover:scale-[1.03] md:hover:scale-105">
+            <CardContent className="p-3 sm:p-4 md:p-5">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Current GPA</p>
-                  <p className="text-2xl font-bold">{calculateOverallGPA()}</p>
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate mb-1">Current GPA</p>
+                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-foreground truncate">{calculateOverallGPA()}</p>
                 </div>
-                <Award className="h-8 w-8 text-yellow-600" />
+                <Award className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-600" />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
+          <Card className="hover:shadow-md transition-all duration-300 hover:border-role-student/20 cursor-pointer hover:scale-[1.01] sm:hover:scale-[1.03] md:hover:scale-105">
+            <CardContent className="p-3 sm:p-4 md:p-5">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Credits</p>
-                  <p className="text-2xl font-bold">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate mb-1">Total Credits</p>
+                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-foreground truncate">
                     {enrolledCourses.reduce((sum, course) => sum + (course.courses.credits || 0), 0)}
                   </p>
                 </div>
-                <Clock className="h-8 w-8 text-blue-600" />
+                <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <Tabs defaultValue="courses" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="courses">My Courses</TabsTrigger>
-            <TabsTrigger value="materials">Course Materials</TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="courses" className="space-y-3 sm:space-y-4">
+          <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+            <TabsList className="inline-flex w-auto min-w-full sm:min-w-0">
+              <TabsTrigger value="courses" className="text-xs sm:text-sm flex-1 sm:flex-none">Courses</TabsTrigger>
+              <TabsTrigger value="materials" className="text-xs sm:text-sm flex-1 sm:flex-none">Materials</TabsTrigger>
+              <TabsTrigger value="assignments" className="text-xs sm:text-sm flex-1 sm:flex-none">Assignments</TabsTrigger>
+              <TabsTrigger value="grades" className="text-xs sm:text-sm flex-1 sm:flex-none">Grades</TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Courses Overview */}
           <TabsContent value="courses" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {enrolledCourses.map((enrollment, index) => (
-                <Card key={index} className="cursor-pointer hover:shadow-md transition-shadow"
-                      onClick={() => setSelectedCourse(enrollment.courses)}>
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle className="text-lg">{enrollment.courses.course_name}</CardTitle>
-                        <Badge variant="outline">{enrollment.courses.course_code}</Badge>
-                      </div>
-                      <Badge variant={enrollment.progress.progress >= 75 ? 'default' : 'secondary'}>
-                        {enrollment.progress.progress}%
-                      </Badge>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {enrolledCourses.map((enrollment, index) => (
+              <Card key={index} className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => setSelectedCourse(enrollment.courses)}>
+                <CardHeader className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                    <div className="flex-1">
+                      <CardTitle className="text-base sm:text-lg">{enrollment.courses.course_name}</CardTitle>
+                      <Badge variant="outline" className="mt-2 text-xs">{enrollment.courses.course_code}</Badge>
                     </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-3">
-                      <Progress value={enrollment.progress.progress} />
-                      <div className="text-sm text-muted-foreground">
-                        <p>Instructor: {enrollment.courses.user_profiles?.first_name} {enrollment.courses.user_profiles?.last_name}</p>
-                        <p>Credits: {enrollment.courses.credits}</p>
-                        <p>Assignments: {enrollment.progress.submittedAssignments}/{enrollment.progress.totalAssignments}</p>
-                      </div>
+                    <Badge variant={enrollment.progress.progress >= 75 ? 'default' : 'secondary'} className="text-xs self-start">
+                      {enrollment.progress.progress}%
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6 pt-0">
+                  <div className="space-y-3">
+                    <Progress value={enrollment.progress.progress} />
+                    <div className="text-xs sm:text-sm text-muted-foreground space-y-1">
+                      <p>Instructor: {enrollment.courses.user_profiles?.first_name} {enrollment.courses.user_profiles?.last_name}</p>
+                      <p>Credits: {enrollment.courses.credits}</p>
+                      <p>Assignments: {enrollment.progress.submittedAssignments}/{enrollment.progress.totalAssignments}</p>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
 
           {/* Course Materials */}
           <TabsContent value="materials" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Course Materials - {selectedCourse?.course_name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {courseMaterials.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No materials available for this course
-                    </div>
-                  ) : (
-                    courseMaterials.map((material, index) => (
-                      <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="flex items-center space-x-3">
-                          {getMaterialIcon(material.material_type)}
-                          <div>
-                            <p className="font-medium">{material.title}</p>
-                            <p className="text-sm text-muted-foreground">{material.description}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Uploaded: {new Date(material.uploaded_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex space-x-2">
-                          {material.file_url && (
-                            <Button size="sm" variant="outline" asChild>
-                              <a href={material.file_url} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="h-4 w-4 mr-1" />
-                                View
-                              </a>
-                            </Button>
-                          )}
-                          <Button size="sm" variant="outline">
-                            <Download className="h-4 w-4 mr-1" />
-                            Download
-                          </Button>
+          <Card>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Course Materials - {selectedCourse?.course_name || "Select a course"}</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6">
+              <div className="space-y-3">
+                {courseMaterials.length === 0 ? (
+                  <div className="text-center py-6 sm:py-8 text-sm sm:text-base text-muted-foreground">
+                    No materials available for this course
+                  </div>
+                ) : (
+                  courseMaterials.map((material, index) => (
+                    <div key={index} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 sm:p-4 border rounded-lg">
+                      <div className="flex items-start space-x-3">
+                        {getMaterialIcon(material.material_type)}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm sm:text-base truncate">{material.title}</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground mt-1">{material.description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Uploaded: {new Date(material.uploaded_at).toLocaleDateString()}
+                          </p>
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      <div className="flex space-x-2">
+                        {material.file_url && (
+                          <Button size="sm" variant="outline" asChild className="text-xs">
+                            <a href={material.file_url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                              View
+                            </a>
+                          </Button>
+                        )}
+                        <Button size="sm" variant="outline" className="text-xs">
+                          <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          Download
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
           {/* Assignments */}
           <TabsContent value="assignments" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Assignments - {selectedCourse?.course_name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {courseAssignments.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No assignments for this course
-                    </div>
-                  ) : (
-                    courseAssignments.map((assignment, index) => (
-                      <div key={index} className="p-4 border rounded-lg">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h4 className="font-medium">{assignment.title}</h4>
-                            <p className="text-sm text-muted-foreground">{assignment.description}</p>
-                          </div>
-                          <Badge variant={assignment.assignment_submissions?.length > 0 ? 'default' : 'secondary'}>
-                            {assignment.assignment_submissions?.length > 0 ? 'Submitted' : 'Pending'}
-                          </Badge>
+          <Card>
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-base sm:text-lg">Assignments - {selectedCourse?.course_name || "Select a course"}</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6">
+              <div className="space-y-4">
+                {courseAssignments.length === 0 ? (
+                  <div className="text-center py-6 sm:py-8 text-sm sm:text-base text-muted-foreground">
+                    No assignments for this course
+                  </div>
+                ) : (
+                  courseAssignments.map((assignment, index) => (
+                    <div key={index} className="p-3 sm:p-4 border rounded-lg">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-3">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-sm sm:text-base">{assignment.title}</h4>
+                          <p className="text-xs sm:text-sm text-muted-foreground mt-1">{assignment.description}</p>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                          <div>
-                            <p className="text-muted-foreground">Due Date</p>
-                            <p>{new Date(assignment.due_date).toLocaleDateString()}</p>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground">Max Marks</p>
-                            <p>{assignment.max_marks}</p>
-                          </div>
-                          {assignment.assignment_submissions?.length > 0 && (
-                            <div>
-                              <p className="text-muted-foreground">Score</p>
-                              <p>{assignment.assignment_submissions[0].marks_obtained || 'Not graded'}</p>
-                            </div>
-                          )}
-                        </div>
+                        <Badge variant={assignment.assignment_submissions?.length > 0 ? 'default' : 'secondary'} className="text-xs self-start">
+                          {assignment.assignment_submissions?.length > 0 ? 'Submitted' : 'Pending'}
+                        </Badge>
                       </div>
-                    ))
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 text-xs sm:text-sm">
+                        <div>
+                          <p className="text-muted-foreground">Due Date</p>
+                          <p className="font-medium mt-1">{new Date(assignment.due_date).toLocaleDateString()}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">Max Marks</p>
+                          <p className="font-medium mt-1">{assignment.max_marks}</p>
+                        </div>
+                        {assignment.assignment_submissions?.length > 0 && (
+                          <div>
+                            <p className="text-muted-foreground">Score</p>
+                            <p className="font-medium mt-1">{assignment.assignment_submissions[0].marks_obtained || 'Not graded'}</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
           {/* Grades - Now uses StudentGrades component */}
           <TabsContent value="grades" className="space-y-4">
-            {renderStudentGrades()}
-          </TabsContent>
+          {renderStudentGrades()}
+        </TabsContent>
         </Tabs>
       </div>
     </PermissionWrapper>

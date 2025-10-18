@@ -108,11 +108,11 @@ const QuizList = ({ onStartQuiz, takenQuizIds }: QuizListProps) => {
 
   const getQuizStatus = (quiz: any) => {
     const submissions = quizSubmissions.filter(s => s.quiz_id === quiz.id);
-    
+
     if (submissions.length === 0) {
-      return { 
-        status: 'not_attempted', 
-        label: 'Not Started', 
+      return {
+        status: 'not_attempted',
+        label: 'Not Started',
         canAttempt: true,
         attempts: 0
       };
@@ -217,94 +217,100 @@ const QuizList = ({ onStartQuiz, takenQuizIds }: QuizListProps) => {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {quizzes.map((quiz: any) => {
         const quizStatus = getQuizStatus(quiz);
         const maxAttempts = quiz.attempts_allowed || '∞';
-        
+
         return (
-          <Card key={quiz.id} className={`transition-all duration-200 hover:shadow-md ${getStatusColor(quizStatus.status)}`}>
-            <CardContent className="p-6 rounded-sm">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    {getStatusIcon(quizStatus.status)}
-                    <h3 className="font-semibold text-lg">{quiz.quiz_name}</h3>
+          <Card key={quiz.id} className={`transition-all duration-200 hover:shadow-md ${getStatusColor(quizStatus.status)} w-full`}>
+            <CardContent className="p-4 sm:p-5 md:p-6 rounded-sm">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 sm:gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-2 mb-2">
+                    <div className="flex-shrink-0 mt-0.5">
+                      {getStatusIcon(quizStatus.status)}
+                    </div>
+                    <h3 className="font-semibold text-base sm:text-lg leading-tight break-words">
+                      {quiz.quiz_name}
+                    </h3>
                   </div>
-                  
+
                   {quiz.description && (
-                    <p className="text-sm text-muted-foreground mb-3">
+                    <p className="text-xs sm:text-sm text-muted-foreground mb-3 break-words">
                       {quiz.description}
                     </p>
                   )}
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <BookOpen className="w-4 h-4" />
-                        <span>{quiz.courses?.course_name} ({quiz.courses?.course_code})</span>
+
+                  <div className="space-y-2 sm:space-y-2.5">
+                    {/* Course and Instructor Info */}
+                    <div className="flex flex-col xs:flex-row xs:items-center gap-2 xs:gap-4 text-xs sm:text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                        <span className="truncate">{quiz.courses?.course_name} ({quiz.courses?.course_code})</span>
                       </div>
-                      
+
                       {quiz.courses?.user_profiles && (
-                        <div className="flex items-center gap-1">
-                          <Users className="w-4 h-4" />
-                          <span>
+                        <div className="flex items-center gap-1 min-w-0">
+                          <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                          <span className="truncate">
                             {quiz.courses.user_profiles.first_name} {quiz.courses.user_profiles.last_name}
                           </span>
                         </div>
                       )}
                     </div>
-                    
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+
+                    {/* Quiz Stats */}
+                    <div className="flex flex-wrap items-center gap-x-3 sm:gap-x-4 gap-y-1.5 text-xs sm:text-sm text-muted-foreground">
                       {quiz.time_limit_minutes && (
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          <span>{quiz.time_limit_minutes} minutes</span>
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+                          <span>{quiz.time_limit_minutes} min</span>
                         </div>
                       )}
-                      
-                      <div className="flex items-center gap-1">
+
+                      <div className="flex items-center gap-1 whitespace-nowrap">
                         <span>Attempts: {quizStatus.attempts}/{maxAttempts}</span>
                       </div>
-                      
-                      <div className="flex items-center gap-1">
+
+                      <div className="flex items-center gap-1 whitespace-nowrap">
                         <span>Pass: {quiz.pass_percentage || 60}%</span>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-full text-sm font-medium ${
-                          quizStatus.status === 'passed' ? ' text-green-800' :
-                          quizStatus.status === 'failed' ? ' text-red-800' :
-                          quizStatus.status === 'in_progress' ? ' text-orange-800' :
-                          ' text-gray-800'
+
+                    {/* Status and Score */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`px-2 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap ${quizStatus.status === 'passed' ? 'bg-green-100 text-green-800' :
+                          quizStatus.status === 'failed' ? 'bg-red-100 text-red-800' :
+                            quizStatus.status === 'in_progress' ? 'bg-orange-100 text-orange-800' :
+                              'bg-gray-100 text-gray-800'
                         }`}>
-                          {quizStatus.label}
+                        {quizStatus.label}
+                      </span>
+
+                      {quizStatus.bestScore !== undefined && (
+                        <span className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">
+                          Best: {quizStatus.bestScore}/{quizStatus.bestTotal}
                         </span>
-                        
-                        {quizStatus.bestScore !== undefined && (
-                          <span className="text-sm text-muted-foreground">
-                            Best: {quizStatus.bestScore}/{quizStatus.bestTotal}
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
-                
-                <div className="ml-4">
-                  <Button 
+
+                {/* Action Button */}
+                <div className="flex-shrink-0 w-full sm:w-auto">
+                  <Button
                     onClick={() => onStartQuiz(quiz)}
                     disabled={!quizStatus.canAttempt}
                     variant={quizStatus.status === 'passed' ? 'outline' : 'default'}
                     size="sm"
+                    className="w-full sm:w-auto text-xs sm:text-sm px-3 sm:px-4 py-2 whitespace-nowrap"
                   >
                     {!quizStatus.canAttempt ? 'No Attempts Left' :
-                     quizStatus.status === 'passed' ? 'Retake Quiz' :
-                     quizStatus.status === 'failed' ? 'Retry Quiz' :
-                     quizStatus.status === 'in_progress' ? 'Continue Quiz' :
-                     'Start Quiz'}
+                      quizStatus.status === 'passed' ? 'Retake Quiz' :
+                        quizStatus.status === 'failed' ? 'Retry Quiz' :
+                          quizStatus.status === 'in_progress' ? 'Continue Quiz' :
+                            'Start Quiz'}
                   </Button>
                 </div>
               </div>

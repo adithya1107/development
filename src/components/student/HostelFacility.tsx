@@ -7,10 +7,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
-import { 
-  Building, 
-  Bed, 
-  Wrench, 
+import {
+  Building,
+  Bed,
+  Wrench,
   Plus,
   MapPin,
   Users,
@@ -62,24 +62,24 @@ const HostelFacility: React.FC<HostelFacilityProps> = ({ studentData }) => {
 
   // Check if student has applied for a specific room
   const hasAppliedForRoom = (roomId: string) => {
-    return applications.some(app => 
-      app.room_id === roomId && 
+    return applications.some(app =>
+      app.room_id === roomId &&
       ['pending', 'approved', 'allocated'].includes(app.status)
     );
   };
 
   // Check if student has applied for any room in a block
   const hasAppliedForBlock = (blockName: string) => {
-    return applications.some(app => 
-      app.hostel_rooms?.block_name === blockName && 
+    return applications.some(app =>
+      app.hostel_rooms?.block_name === blockName &&
       ['pending', 'approved', 'allocated'].includes(app.status)
     );
   };
 
   // Get available rooms in a block that student hasn't applied for
   const getAvailableRoomsInBlock = (rooms: any[]) => {
-    return rooms.filter(room => 
-      room.current_occupancy < room.capacity && 
+    return rooms.filter(room =>
+      room.current_occupancy < room.capacity &&
       !hasAppliedForRoom(room.id)
     );
   };
@@ -205,50 +205,63 @@ const HostelFacility: React.FC<HostelFacilityProps> = ({ studentData }) => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Hostel & Facilities</h2>
-        <div className="flex gap-2">
-          <Badge variant="outline" className="px-3 py-1">
-            {Object.keys(hostelBlocks).length} Hostel Blocks Available
+    <div className="space-y-4 sm:space-y-6 px-3 sm:px-4 md:px-6 w-full max-w-full">
+      <div className="flex flex-col xs:flex-row justify-between items-start xs:items-center gap-3">
+        <h2 className="text-lg sm:text-xl md:text-2xl font-bold">Hostel & Facilities</h2>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">
+            {Object.keys(hostelBlocks).length} Hostel Blocks
           </Badge>
           {pendingApplications.length > 0 && (
-            <Badge variant="secondary" className="px-3 py-1">
-              {pendingApplications.length} Pending Applications
+            <Badge variant="secondary" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">
+              {pendingApplications.length} Pending
             </Badge>
           )}
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="hostels">
-            <Building className="h-4 w-4 mr-2" />
-            Hostels
-          </TabsTrigger>
-          <TabsTrigger value="applications">
-            <Bed className="h-4 w-4 mr-2" />
-            My Applications
-            {applications.length > 0 && (
-              <Badge variant="secondary" className="ml-1 text-xs">
-                {applications.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="facilities">
-            <Wrench className="h-4 w-4 mr-2" />
-            Facilities
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full px-0">
+          <TabsList className="grid w-full grid-cols-3 h-auto gap-0">
+            <TabsTrigger
+              value="hostels"
+              className="flex flex-row items-center justify-center gap-1 xs:gap-1.5 text-xs xs:text-sm sm:text-base px-1 xs:px-2 sm:px-3 py-2.5 transition-all duration-200"
+            >
+              <Building className="h-4 w-4 xs:h-4 xs:w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+              <span className="whitespace-nowrap">Hostels</span>
+            </TabsTrigger>
 
-        <TabsContent value="hostels" className="space-y-6">
+            <TabsTrigger
+              value="applications"
+              className="flex flex-row items-center justify-center gap-0.5 xs:gap-1 text-[11px] xs:text-sm sm:text-base px-0.5 xs:px-2 sm:px-3 py-2.5 transition-all duration-200"
+            >
+              <Bed className="h-3.5 w-3.5 xs:h-4 xs:w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+              <span className="whitespace-nowrap">Applications</span>
+              {applications.length > 0 && (
+                <Badge variant="secondary" className="ml-0.5 xs:ml-1 text-[8px] xs:text-[10px] px-1 xs:px-1.5 py-0">
+                  {applications.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+
+            <TabsTrigger
+              value="facilities"
+              className="flex flex-row items-center justify-center gap-1 xs:gap-1.5 text-xs xs:text-sm sm:text-base px-1 xs:px-2 sm:px-3 py-2.5 transition-all duration-200"
+            >
+              <Wrench className="h-4 w-4 xs:h-4 xs:w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+              <span className="whitespace-nowrap">Facilities</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="hostels" className="space-y-4 sm:space-y-6">
           {pendingApplications.length > 0 && (
-            <Card className="border-l-4">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 " />
-                  <p className="text-sm">
-                    <span className="font-medium">Tip:</span> You can apply to multiple hostels to increase your chances! 
+            <Card className="border-l-4 border-l-blue-500 w-full">
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm break-words">
+                    <span className="font-medium">Tip:</span> You can apply to multiple hostels to increase your chances!
                     You currently have {pendingApplications.length} pending application{pendingApplications.length > 1 ? 's' : ''}.
                   </p>
                 </div>
@@ -256,11 +269,11 @@ const HostelFacility: React.FC<HostelFacilityProps> = ({ studentData }) => {
             </Card>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {Object.entries(hostelBlocks).map(([blockName, rooms]) => {
               const availableRooms = getAvailableRoomsInBlock(rooms);
               const hasBlockApplication = hasAppliedForBlock(blockName);
-              
+
               return (
                 <Card key={blockName} className={`border-l-4 ${hasBlockApplication ? 'border-l-green-500 ' : 'border-l-blue-500'}`}>
                   <CardHeader className="pb-3">
@@ -283,7 +296,7 @@ const HostelFacility: React.FC<HostelFacilityProps> = ({ studentData }) => {
                         <Building className="h-4 w-4 mr-2" />
                         {rooms.length} Total Rooms
                       </div>
-                      
+
                       <div className="flex justify-between text-sm">
                         <span className="flex items-center">
                           <Users className="h-4 w-4 mr-1" />
@@ -291,8 +304,8 @@ const HostelFacility: React.FC<HostelFacilityProps> = ({ studentData }) => {
                         </span>
                       </div>
 
-                      <div className="flex justify-between text-sm">
-                        <span>Available for You:</span>
+                      <div className="flex justify-start text-sm">
+                        <span className='mr-[4px]'>Available for You:</span>
                         <span className={availableRooms.length > 0 ? 'text-green-600 font-medium' : 'text-red-500'}>
                           {availableRooms.length}
                         </span>
@@ -304,8 +317,8 @@ const HostelFacility: React.FC<HostelFacilityProps> = ({ studentData }) => {
                         </div>
                       )}
 
-                      <HostelApplicationDialog 
-                        onApply={(roomId, preferredRoomType, comments) => 
+                      <HostelApplicationDialog
+                        onApply={(roomId, preferredRoomType, comments) =>
                           applyForHostel(roomId, preferredRoomType, comments, blockName)
                         }
                         rooms={availableRooms}
@@ -374,7 +387,7 @@ const HostelFacility: React.FC<HostelFacilityProps> = ({ studentData }) => {
                           <div>
                             <p className="font-medium">Application #{application.id.slice(-8)}</p>
                             <p className="text-sm font-semibold">
-                              {application.hostel_rooms ? 
+                              {application.hostel_rooms ?
                                 `${application.hostel_rooms.block_name} - Room ${application.hostel_rooms.room_number}` :
                                 'No specific room requested'
                               }
@@ -402,51 +415,51 @@ const HostelFacility: React.FC<HostelFacilityProps> = ({ studentData }) => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="facilities" className="space-y-6">
+        <TabsContent value="facilities" className="space-y-4 sm:space-y-6">
           <div className="flex justify-end">
             <FacilityRequestDialog onSubmit={submitFacilityRequest} facilities={facilities} />
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>My Facility Requests</CardTitle>
+          <Card className="w-full">
+            <CardHeader className="p-4 sm:p-5 md:p-6">
+              <CardTitle className="text-base sm:text-lg">My Facility Requests</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-4 sm:p-5 md:p-6">
               {facilityRequests.length === 0 ? (
-                <div className="text-center py-8">
-                  <Wrench className="h-12 w-12 mx-auto mb-4" />
-                  <p>No facility requests submitted yet</p>
+                <div className="text-center py-6 sm:py-8">
+                  <Wrench className="h-10 w-10 sm:h-12 sm:w-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+                  <p className="text-sm sm:text-base">No facility requests submitted yet</p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4 max-h-[600px] overflow-y-auto pr-2">
                   {facilityRequests.map((request: any) => (
-                    <Card key={request.id} className="border">
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h4 className="font-semibold">{request.title}</h4>
-                            <p className="text-sm capitalize">
+                    <Card key={request.id} className="border w-full">
+                      <CardContent className="p-3 sm:p-4">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm sm:text-base break-words">{request.title}</h4>
+                            <p className="text-xs sm:text-sm capitalize text-gray-600">
                               {request.request_type} Request
                             </p>
                             {request.facilities && (
-                              <p className="text-sm">
+                              <p className="text-xs sm:text-sm text-gray-600 break-words">
                                 Facility: {request.facilities.facility_name}
                               </p>
                             )}
                           </div>
-                          <div className="text-right">
-                            <Badge variant={getStatusColor(request.status)}>
+                          <div className="text-left sm:text-right flex-shrink-0">
+                            <Badge variant={getStatusColor(request.status)} className="text-xs">
                               {request.status}
                             </Badge>
-                            <p className="text-xs mt-1">
-                              {new Date(request.submitted_at).toLocaleDateString()}
+                            <p className="text-[10px] sm:text-xs text-gray-600 mt-1">
+                              {new Date(request.submitted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                             </p>
                           </div>
                         </div>
-                        
-                        <p className="text-sm mb-3">{request.description}</p>
-                        
-                        <Badge variant="outline" className="capitalize">
+
+                        <p className="text-xs sm:text-sm mb-3 break-words">{request.description}</p>
+
+                        <Badge variant="outline" className="capitalize text-xs">
                           {request.priority} Priority
                         </Badge>
                       </CardContent>
@@ -457,37 +470,37 @@ const HostelFacility: React.FC<HostelFacilityProps> = ({ studentData }) => {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Campus Facilities</CardTitle>
+          <Card className="w-full">
+            <CardHeader className="p-4 sm:p-5 md:p-6">
+              <CardTitle className="text-base sm:text-lg">Campus Facilities</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <CardContent className="p-4 sm:p-5 md:p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {facilities.map((facility: any) => (
-                  <Card key={facility.id} className="border hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
-                      <h4 className="font-semibold mb-2">{facility.facility_name}</h4>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex items-center space-x-2">
-                          <Building className="h-4 w-4" />
-                          <span className="capitalize">{facility.facility_type}</span>
+                  <Card key={facility.id} className="border hover:shadow-md transition-shadow w-full">
+                    <CardContent className="p-3 sm:p-4">
+                      <h4 className="font-semibold text-sm sm:text-base mb-2 break-words">{facility.facility_name}</h4>
+                      <div className="space-y-1 text-xs sm:text-sm">
+                        <div className="flex items-center gap-2">
+                          <Building className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+                          <span className="capitalize truncate">{facility.facility_type}</span>
                         </div>
                         {facility.location && (
-                          <div className="flex items-center space-x-2">
-                            <MapPin className="h-4 w-4" />
-                            <span>{facility.location}</span>
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+                            <span className="truncate">{facility.location}</span>
                           </div>
                         )}
                         {facility.capacity && (
-                          <div className="flex items-center space-x-2">
-                            <Users className="h-4 w-4" />
+                          <div className="flex items-center gap-2">
+                            <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
                             <span>Capacity: {facility.capacity}</span>
                           </div>
                         )}
                       </div>
-                      
+
                       <div className="mt-3 pt-3 border-t">
-                        <Badge variant={facility.is_available ? 'default' : 'destructive'}>
+                        <Badge variant={facility.is_available ? 'default' : 'destructive'} className="text-xs">
                           {facility.is_available ? 'Available' : 'Unavailable'}
                         </Badge>
                       </div>
@@ -543,37 +556,37 @@ const HostelApplicationDialog: React.FC<{
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button 
-          disabled={isDisabled} 
-          className="w-full mt-4"
+        <Button
+          disabled={isDisabled}
+          className="w-full mt-4 text-xs sm:text-sm"
           variant={hasBlockApplication ? "outline" : "default"}
         >
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2" />
           {getButtonText()}
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{getDialogTitle()}</DialogTitle>
-          <DialogDescription>
-            {hasAllocation ? 
+          <DialogTitle className="text-base sm:text-lg break-words">{getDialogTitle()}</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
+            {hasAllocation ?
               `Submit an application for room change in ${blockName}.` :
-              `Submit your application for hostel accommodation in ${blockName}. You can apply to multiple hostels to increase your chances.`
+              `Submit your application for hostel accommodation in ${blockName}. You can apply to multiple hostels.`
             }
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium">Preferred Room in {blockName} (Optional)</label>
+            <label className="text-xs sm:text-sm font-medium">Preferred Room in {blockName} (Optional)</label>
             <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a specific room or leave blank" />
+              <SelectTrigger className="text-xs sm:text-sm">
+                <SelectValue placeholder="Select a room or leave blank" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="no-preference">No preference - Any room in {blockName}</SelectItem>
+                <SelectItem value="no-preference" className="text-xs sm:text-sm">No preference - Any room</SelectItem>
                 {rooms.map((room) => (
-                  <SelectItem key={room.id} value={room.id}>
-                    Room {room.room_number} ({room.room_type}) - {room.capacity - room.current_occupancy} spots available
+                  <SelectItem key={room.id} value={room.id} className="text-xs sm:text-sm">
+                    Room {room.room_number} ({room.room_type}) - {room.capacity - room.current_occupancy} spots
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -581,35 +594,36 @@ const HostelApplicationDialog: React.FC<{
           </div>
 
           <div>
-            <label className="text-sm font-medium">Preferred Room Type</label>
+            <label className="text-xs sm:text-sm font-medium">Preferred Room Type</label>
             <Select value={preferredRoomType} onValueChange={setPreferredRoomType}>
-              <SelectTrigger>
+              <SelectTrigger className="text-xs sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="single">Single Room</SelectItem>
-                <SelectItem value="shared">Shared Room</SelectItem>
-                <SelectItem value="suite">Suite</SelectItem>
+                <SelectItem value="single" className="text-xs sm:text-sm">Single Room</SelectItem>
+                <SelectItem value="shared" className="text-xs sm:text-sm">Shared Room</SelectItem>
+                <SelectItem value="suite" className="text-xs sm:text-sm">Suite</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <label className="text-sm font-medium">Additional Comments</label>
+            <label className="text-xs sm:text-sm font-medium">Additional Comments</label>
             <Textarea
-              placeholder={`Any special requirements or preferences for ${blockName}...`}
+              placeholder={`Any special requirements for ${blockName}...`}
               value={comments}
               onChange={(e) => setComments(e.target.value)}
               rows={3}
+              className="text-xs sm:text-sm"
             />
           </div>
 
-          <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded">
-            <p><strong>💡 Pro Tip:</strong> Applying to multiple hostels increases your chances of getting accommodation. Each application is reviewed independently!</p>
+          <div className="text-xs sm:text-sm text-gray-600 bg-blue-50 p-3 rounded">
+            <p><strong>💡 Pro Tip:</strong> Applying to multiple hostels increases your chances!</p>
           </div>
 
-          <Button onClick={handleSubmit} className="w-full">
-            Submit Application to {blockName}
+          <Button onClick={handleSubmit} className="w-full text-xs sm:text-sm">
+            Submit Application
           </Button>
         </div>
       </DialogContent>
@@ -644,29 +658,29 @@ const FacilityRequestDialog: React.FC<{
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
+        <Button className="text-xs sm:text-sm">
+          <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-2" />
           New Request
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="w-[95vw] max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Submit Facility Request</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-base sm:text-lg">Submit Facility Request</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
             Submit a request for facility maintenance, booking, or other issues.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium">Facility (Optional)</label>
+            <label className="text-xs sm:text-sm font-medium">Facility (Optional)</label>
             <Select value={facilityId} onValueChange={setFacilityId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select facility or leave blank for general request" />
+              <SelectTrigger className="text-xs sm:text-sm">
+                <SelectValue placeholder="Select facility or leave blank" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="general">General Request</SelectItem>
+                <SelectItem value="general" className="text-xs sm:text-sm">General Request</SelectItem>
                 {facilities.map((facility) => (
-                  <SelectItem key={facility.id} value={facility.id}>
+                  <SelectItem key={facility.id} value={facility.id} className="text-xs sm:text-sm">
                     {facility.facility_name} ({facility.facility_type})
                   </SelectItem>
                 ))}
@@ -675,58 +689,60 @@ const FacilityRequestDialog: React.FC<{
           </div>
 
           <div>
-            <label className="text-sm font-medium">Request Type</label>
+            <label className="text-xs sm:text-sm font-medium">Request Type</label>
             <Select value={requestType} onValueChange={setRequestType}>
-              <SelectTrigger>
+              <SelectTrigger className="text-xs sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="maintenance">Maintenance</SelectItem>
-                <SelectItem value="booking">Room/Facility Booking</SelectItem>
-                <SelectItem value="complaint">Complaint</SelectItem>
-                <SelectItem value="suggestion">Suggestion</SelectItem>
+                <SelectItem value="maintenance" className="text-xs sm:text-sm">Maintenance</SelectItem>
+                <SelectItem value="booking" className="text-xs sm:text-sm">Room/Facility Booking</SelectItem>
+                <SelectItem value="complaint" className="text-xs sm:text-sm">Complaint</SelectItem>
+                <SelectItem value="suggestion" className="text-xs sm:text-sm">Suggestion</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div>
-            <label className="text-sm font-medium">Title</label>
+            <label className="text-xs sm:text-sm font-medium">Title</label>
             <Input
               placeholder="Brief title for your request..."
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              className="text-xs sm:text-sm"
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium">Description</label>
+            <label className="text-xs sm:text-sm font-medium">Description</label>
             <Textarea
               placeholder="Detailed description of your request..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
+              className="text-xs sm:text-sm"
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium">Priority</label>
+            <label className="text-xs sm:text-sm font-medium">Priority</label>
             <Select value={priority} onValueChange={setPriority}>
-              <SelectTrigger>
+              <SelectTrigger className="text-xs sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="normal">Normal</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="urgent">Urgent</SelectItem>
+                <SelectItem value="low" className="text-xs sm:text-sm">Low</SelectItem>
+                <SelectItem value="normal" className="text-xs sm:text-sm">Normal</SelectItem>
+                <SelectItem value="high" className="text-xs sm:text-sm">High</SelectItem>
+                <SelectItem value="urgent" className="text-xs sm:text-sm">Urgent</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <Button 
-            onClick={handleSubmit} 
+          <Button
+            onClick={handleSubmit}
             disabled={!title.trim() || !description.trim()}
-            className="w-full"
+            className="w-full text-xs sm:text-sm"
           >
             Submit Request
           </Button>

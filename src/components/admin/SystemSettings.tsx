@@ -26,7 +26,7 @@ const SystemSettings = ({ userProfile }: SystemSettingsProps) => {
         title: "Action Initiated",
         description: `${action} process started. This may take a few moments.`,
       });
-      
+
       // In a real implementation, these would call actual system APIs
       setTimeout(() => {
         toast({
@@ -115,7 +115,7 @@ const SystemSettings = ({ userProfile }: SystemSettingsProps) => {
               onCheckedChange={setMaintenanceMode}
             />
           </div>
-          
+
           <div className="space-y-2">
             <Label htmlFor="maintenance-message">Maintenance Message</Label>
             <Textarea
@@ -156,8 +156,8 @@ const SystemSettings = ({ userProfile }: SystemSettingsProps) => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => handleSystemAction('Database Backup')}
               className="h-auto p-4 flex flex-col items-start"
             >
@@ -166,9 +166,9 @@ const SystemSettings = ({ userProfile }: SystemSettingsProps) => {
                 Create a full system backup
               </div>
             </Button>
-            
-            <Button 
-              variant="outline" 
+
+            <Button
+              variant="outline"
               onClick={() => handleSystemAction('Cache Clear')}
               className="h-auto p-4 flex flex-col items-start"
             >
@@ -177,9 +177,9 @@ const SystemSettings = ({ userProfile }: SystemSettingsProps) => {
                 Clear all system caches
               </div>
             </Button>
-            
-            <Button 
-              variant="outline" 
+
+            <Button
+              variant="outline"
               onClick={() => handleSystemAction('System Optimization')}
               className="h-auto p-4 flex flex-col items-start"
             >
@@ -188,9 +188,9 @@ const SystemSettings = ({ userProfile }: SystemSettingsProps) => {
                 Run system optimization tasks
               </div>
             </Button>
-            
-            <Button 
-              variant="outline" 
+
+            <Button
+              variant="outline"
               onClick={() => handleSystemAction('Log Cleanup')}
               className="h-auto p-4 flex flex-col items-start"
             >
@@ -227,7 +227,7 @@ const SystemSettings = ({ userProfile }: SystemSettingsProps) => {
               onCheckedChange={setEmailNotifications}
             />
           </div>
-          
+
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label className="text-base">System Alerts</Label>
@@ -254,32 +254,34 @@ const SystemSettings = ({ userProfile }: SystemSettingsProps) => {
             Use these actions only in emergency situations. These operations cannot be undone.
           </CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Button 
-              variant="destructive" 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Button
+              variant="destructive"
               onClick={() => handleSystemAction('Emergency Shutdown')}
-              className="h-auto p-4 flex flex-col items-start"
+              className="h-auto p-4 flex flex-col items-start w-full transition-transform duration-200 ease-in-out hover:scale-[1.001] active:scale-[0.98]"
             >
               <div className="font-medium">Emergency Shutdown</div>
-              <div className="text-sm opacity-90 mt-1">
+              <div className="text-xs sm:text-sm opacity-90 mt-1">
                 Immediately shut down all services
               </div>
             </Button>
-            
-            <Button 
-              variant="destructive" 
+
+            <Button
+              variant="destructive"
               onClick={() => handleSystemAction('Reset All Sessions')}
-              className="h-auto p-4 flex flex-col items-start"
+              className="h-auto p-4 flex flex-col items-start w-full transition-transform duration-200 ease-in-out hover:scale-[1.001] active:scale-[0.98]"
             >
               <div className="font-medium">Reset All Sessions</div>
-              <div className="text-sm opacity-90 mt-1">
+              <div className="text-xs sm:text-sm opacity-90 mt-1">
                 Force logout all users immediately
               </div>
             </Button>
           </div>
         </CardContent>
       </Card>
+
     </div>
   );
 };
