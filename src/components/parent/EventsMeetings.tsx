@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from "@/components/ui/use-toast";
 import { Calendar as CalendarIcon, Users, Clock, MapPin, Video } from 'lucide-react';
+import { VideoCallModal } from '@/components/VideoCallModal';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface EventsMeetingsProps {
   user: any;
@@ -29,6 +31,11 @@ const EventsMeetings = ({ user }: EventsMeetingsProps) => {
     agenda: ''
   });
   const [loading, setLoading] = useState(true);
+  const { permissions } = usePermissions();
+
+  // Video call state
+  const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
+  const [currentMeeting, setCurrentMeeting] = useState<any>(null);
 
   useEffect(() => {
     fetchChildren();
@@ -243,6 +250,32 @@ const EventsMeetings = ({ user }: EventsMeetingsProps) => {
     }
   };
 
+  const joinVideoCall = (meeting: any) => {
+    if (!meeting.meeting_url) {
+      toast({
+        title: 'Error',
+        description: 'Video call URL not available. Please contact the teacher.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    setCurrentMeeting(meeting);
+    setIsVideoCallOpen(true);
+  };
+
+  const canJoinMeeting = (meeting: any) => {
+    if (meeting.meeting_type !== 'video_call' || meeting.status !== 'scheduled') {
+      return false;
+    }
+    
+    // Check if meeting is within 15 minutes of start time
+    const meetingTime = new Date(meeting.meeting_date).getTime();
+    const now = new Date().getTime();
+    const fifteenMinutes = 15 * 60 * 1000;
+    
+    return (meetingTime - now) <= fifteenMinutes && meeting.meeting_url;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -445,6 +478,27 @@ const EventsMeetings = ({ user }: EventsMeetingsProps) => {
                       <p className="text-xs sm:text-sm text-gray-300 mt-1">{meeting.notes}</p>
                     </div>
                   )}
+                  
+                  {/* Join Video Call Button */}
+                  {meeting.meeting_type === 'video_call' && meeting.status === 'scheduled' && permissions.join_ptm_meetings && (
+                    <div className="mt-3 pt-3 border-t border-gray-700/50">
+                      <Button 
+                        onClick={() => joinVideoCall(meeting)}
+                        className="w-full sm:w-auto flex items-center gap-2"
+                        size="sm"
+                        variant="default"
+                        disabled={!canJoinMeeting(meeting)}
+                      >
+                        <Video className="h-4 w-4" />
+                        {canJoinMeeting(meeting) ? 'Join Video Call' : 'Call Not Yet Available'}
+                      </Button>
+                      {!canJoinMeeting(meeting) && meeting.meeting_url && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Available 15 minutes before meeting time
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
               {meetings.length === 0 && (
@@ -453,6 +507,25 @@ const EventsMeetings = ({ user }: EventsMeetingsProps) => {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Video Call Modal */}
+      {currentMeeting && (
+        <VideoCallModal
+          isOpen={isVideoCallOpen}
+          onClose={() => {
+            setIsVideoCallOpen(false);
+            setCurrentMeeting(null);
+            if (selectedChild) {
+              fetchMeetings(selectedChild); // Refresh to show updated status
+            }
+          }}
+          meetingUrl={currentMeeting.meeting_url}
+          meetingId={currentMeeting.id}
+          userId={user.user_id}
+          userName={`${user.first_name} ${user.last_name}`}
+          userRole="parent"
+        />
       )}
     </div>
   );

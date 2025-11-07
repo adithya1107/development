@@ -224,7 +224,8 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
       if (!sessionData?.college_id) return;
 
       const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Request timeout')), 50000)
+        // 15s timeout for dashboard queries (helps surfacing slow DB/RLS issues in dev)
+        setTimeout(() => reject(new Error('Request timeout')), 15000)
       );
 
       const dataPromise = Promise.all([
@@ -242,8 +243,10 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
           .eq('college_id', sessionData.college_id)
       ]);
 
+      // Race the data fetch against the timeout so slow requests fail fast in dev
       const [usersResult, coursesResult, eventsResult] = await Promise.race([
-        dataPromise
+        dataPromise,
+        timeout
       ]);
 
       const totalUsers = usersResult.data?.length || 0;

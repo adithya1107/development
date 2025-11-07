@@ -1627,6 +1627,8 @@ export type Database = {
           id: string
           instructions: string | null
           is_active: boolean | null
+          proctoring_enabled: boolean | null
+          proctoring_settings_id: string | null
           room_id: string | null
           start_time: string
           total_marks: number
@@ -1643,6 +1645,8 @@ export type Database = {
           id?: string
           instructions?: string | null
           is_active?: boolean | null
+          proctoring_enabled?: boolean | null
+          proctoring_settings_id?: string | null
           room_id?: string | null
           start_time: string
           total_marks: number
@@ -1659,11 +1663,20 @@ export type Database = {
           id?: string
           instructions?: string | null
           is_active?: boolean | null
+          proctoring_enabled?: boolean | null
+          proctoring_settings_id?: string | null
           room_id?: string | null
           start_time?: string
           total_marks?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "examinations_proctoring_settings_id_fkey"
+            columns: ["proctoring_settings_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_settings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "examinations_room_id_fkey"
             columns: ["room_id"]
@@ -2910,6 +2923,644 @@ export type Database = {
           },
         ]
       }
+      proctoring_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          alert_type: Database["public"]["Enums"]["proctoring_event_type"]
+          assigned_to: string | null
+          created_at: string | null
+          escalated_at: string | null
+          escalated_to: string | null
+          escalation_reason: string | null
+          event_id: string | null
+          id: string
+          is_escalated: boolean | null
+          message: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolution_notes: string | null
+          session_id: string
+          severity: Database["public"]["Enums"]["violation_severity"]
+          status: Database["public"]["Enums"]["alert_status"] | null
+          title: string
+          updated_at: string | null
+          violation_id: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type: Database["public"]["Enums"]["proctoring_event_type"]
+          assigned_to?: string | null
+          created_at?: string | null
+          escalated_at?: string | null
+          escalated_to?: string | null
+          escalation_reason?: string | null
+          event_id?: string | null
+          id?: string
+          is_escalated?: boolean | null
+          message?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolution_notes?: string | null
+          session_id: string
+          severity: Database["public"]["Enums"]["violation_severity"]
+          status?: Database["public"]["Enums"]["alert_status"] | null
+          title: string
+          updated_at?: string | null
+          violation_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type?: Database["public"]["Enums"]["proctoring_event_type"]
+          assigned_to?: string | null
+          created_at?: string | null
+          escalated_at?: string | null
+          escalated_to?: string | null
+          escalation_reason?: string | null
+          event_id?: string | null
+          id?: string
+          is_escalated?: boolean | null
+          message?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolution_notes?: string | null
+          session_id?: string
+          severity?: Database["public"]["Enums"]["violation_severity"]
+          status?: Database["public"]["Enums"]["alert_status"] | null
+          title?: string
+          updated_at?: string | null
+          violation_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proctoring_alerts_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_alerts_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_alerts_escalated_to_fkey"
+            columns: ["escalated_to"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_alerts_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_alerts_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_alerts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_alerts_violation_id_fkey"
+            columns: ["violation_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_violations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proctoring_events: {
+        Row: {
+          ai_confidence: number | null
+          ai_model_version: string | null
+          audio_clip_url: string | null
+          created_at: string | null
+          description: string | null
+          details: Json | null
+          event_type: Database["public"]["Enums"]["proctoring_event_type"]
+          flag_reason: string | null
+          flagged_at: string | null
+          flagged_by: string | null
+          id: string
+          is_flagged: boolean | null
+          session_id: string
+          severity: Database["public"]["Enums"]["violation_severity"] | null
+          snapshot_url: string | null
+          timestamp: string | null
+          video_clip_url: string | null
+        }
+        Insert: {
+          ai_confidence?: number | null
+          ai_model_version?: string | null
+          audio_clip_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          details?: Json | null
+          event_type: Database["public"]["Enums"]["proctoring_event_type"]
+          flag_reason?: string | null
+          flagged_at?: string | null
+          flagged_by?: string | null
+          id?: string
+          is_flagged?: boolean | null
+          session_id: string
+          severity?: Database["public"]["Enums"]["violation_severity"] | null
+          snapshot_url?: string | null
+          timestamp?: string | null
+          video_clip_url?: string | null
+        }
+        Update: {
+          ai_confidence?: number | null
+          ai_model_version?: string | null
+          audio_clip_url?: string | null
+          created_at?: string | null
+          description?: string | null
+          details?: Json | null
+          event_type?: Database["public"]["Enums"]["proctoring_event_type"]
+          flag_reason?: string | null
+          flagged_at?: string | null
+          flagged_by?: string | null
+          id?: string
+          is_flagged?: boolean | null
+          session_id?: string
+          severity?: Database["public"]["Enums"]["violation_severity"] | null
+          snapshot_url?: string | null
+          timestamp?: string | null
+          video_clip_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proctoring_events_flagged_by_fkey"
+            columns: ["flagged_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proctoring_interventions: {
+        Row: {
+          alert_id: string | null
+          created_at: string | null
+          id: string
+          intervened_at: string | null
+          intervened_by: string
+          intervention_type: string
+          message: string | null
+          session_id: string
+          student_acknowledged: boolean | null
+          student_acknowledged_at: string | null
+          student_response: string | null
+        }
+        Insert: {
+          alert_id?: string | null
+          created_at?: string | null
+          id?: string
+          intervened_at?: string | null
+          intervened_by: string
+          intervention_type: string
+          message?: string | null
+          session_id: string
+          student_acknowledged?: boolean | null
+          student_acknowledged_at?: string | null
+          student_response?: string | null
+        }
+        Update: {
+          alert_id?: string | null
+          created_at?: string | null
+          id?: string
+          intervened_at?: string | null
+          intervened_by?: string
+          intervention_type?: string
+          message?: string | null
+          session_id?: string
+          student_acknowledged?: boolean | null
+          student_acknowledged_at?: string | null
+          student_response?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proctoring_interventions_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_interventions_intervened_by_fkey"
+            columns: ["intervened_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_interventions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proctoring_sessions: {
+        Row: {
+          college_id: string
+          consent_given: boolean | null
+          consent_timestamp: string | null
+          created_at: string | null
+          critical_violations: number | null
+          device_info: Json | null
+          duration_seconds: number | null
+          ended_at: string | null
+          exam_enrollment_id: string | null
+          exam_id: string | null
+          final_verdict: string | null
+          high_severity_violations: number | null
+          id: string
+          identity_verified: boolean | null
+          ip_address: unknown | null
+          low_severity_violations: number | null
+          medium_severity_violations: number | null
+          quiz_id: string | null
+          quiz_submission_id: string | null
+          review_notes: string | null
+          reviewed: boolean | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          screen_recording_url: string | null
+          settings_id: string | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["proctoring_session_status"] | null
+          student_id: string
+          total_events: number | null
+          total_violations: number | null
+          updated_at: string | null
+          verification_method: string | null
+          video_recording_url: string | null
+        }
+        Insert: {
+          college_id: string
+          consent_given?: boolean | null
+          consent_timestamp?: string | null
+          created_at?: string | null
+          critical_violations?: number | null
+          device_info?: Json | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          exam_enrollment_id?: string | null
+          exam_id?: string | null
+          final_verdict?: string | null
+          high_severity_violations?: number | null
+          id?: string
+          identity_verified?: boolean | null
+          ip_address?: unknown | null
+          low_severity_violations?: number | null
+          medium_severity_violations?: number | null
+          quiz_id?: string | null
+          quiz_submission_id?: string | null
+          review_notes?: string | null
+          reviewed?: boolean | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          screen_recording_url?: string | null
+          settings_id?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["proctoring_session_status"] | null
+          student_id: string
+          total_events?: number | null
+          total_violations?: number | null
+          updated_at?: string | null
+          verification_method?: string | null
+          video_recording_url?: string | null
+        }
+        Update: {
+          college_id?: string
+          consent_given?: boolean | null
+          consent_timestamp?: string | null
+          created_at?: string | null
+          critical_violations?: number | null
+          device_info?: Json | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          exam_enrollment_id?: string | null
+          exam_id?: string | null
+          final_verdict?: string | null
+          high_severity_violations?: number | null
+          id?: string
+          identity_verified?: boolean | null
+          ip_address?: unknown | null
+          low_severity_violations?: number | null
+          medium_severity_violations?: number | null
+          quiz_id?: string | null
+          quiz_submission_id?: string | null
+          review_notes?: string | null
+          reviewed?: boolean | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          screen_recording_url?: string | null
+          settings_id?: string | null
+          started_at?: string | null
+          status?: Database["public"]["Enums"]["proctoring_session_status"] | null
+          student_id?: string
+          total_events?: number | null
+          total_violations?: number | null
+          updated_at?: string | null
+          verification_method?: string | null
+          video_recording_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proctoring_sessions_college_id_fkey"
+            columns: ["college_id"]
+            isOneToOne: false
+            referencedRelation: "colleges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_sessions_exam_enrollment_id_fkey"
+            columns: ["exam_enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "exam_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_sessions_exam_id_fkey"
+            columns: ["exam_id"]
+            isOneToOne: false
+            referencedRelation: "examinations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_sessions_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "quizzes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_sessions_quiz_submission_id_fkey"
+            columns: ["quiz_submission_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_submissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_sessions_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_sessions_settings_id_fkey"
+            columns: ["settings_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_settings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_sessions_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proctoring_settings: {
+        Row: {
+          ai_audio_analysis_enabled: boolean | null
+          ai_behavior_analysis_enabled: boolean | null
+          ai_face_detection_enabled: boolean | null
+          ai_gaze_tracking_enabled: boolean | null
+          ai_object_detection_enabled: boolean | null
+          allow_tab_switching: boolean | null
+          allowed_applications: Json | null
+          audio_analysis_interval_seconds: number | null
+          auto_pause_on_critical_violation: boolean | null
+          blocked_applications: Json | null
+          created_at: string | null
+          created_by: string | null
+          custom_rules: Json | null
+          exam_id: string | null
+          face_detection_interval_seconds: number | null
+          id: string
+          is_enabled: boolean | null
+          max_looking_away_duration_seconds: number | null
+          max_no_face_duration_seconds: number | null
+          min_confidence_threshold: number | null
+          notify_proctor_immediately: boolean | null
+          quiz_id: string | null
+          record_full_session: boolean | null
+          record_violations_only: boolean | null
+          require_fullscreen: boolean | null
+          require_microphone: boolean | null
+          require_screen_share: boolean | null
+          require_webcam: boolean | null
+          snapshot_interval_seconds: number | null
+          updated_at: string | null
+          video_quality: string | null
+        }
+        Insert: {
+          ai_audio_analysis_enabled?: boolean | null
+          ai_behavior_analysis_enabled?: boolean | null
+          ai_face_detection_enabled?: boolean | null
+          ai_gaze_tracking_enabled?: boolean | null
+          ai_object_detection_enabled?: boolean | null
+          allow_tab_switching?: boolean | null
+          allowed_applications?: Json | null
+          audio_analysis_interval_seconds?: number | null
+          auto_pause_on_critical_violation?: boolean | null
+          blocked_applications?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          custom_rules?: Json | null
+          exam_id?: string | null
+          face_detection_interval_seconds?: number | null
+          id?: string
+          is_enabled?: boolean | null
+          max_looking_away_duration_seconds?: number | null
+          max_no_face_duration_seconds?: number | null
+          min_confidence_threshold?: number | null
+          notify_proctor_immediately?: boolean | null
+          quiz_id?: string | null
+          record_full_session?: boolean | null
+          record_violations_only?: boolean | null
+          require_fullscreen?: boolean | null
+          require_microphone?: boolean | null
+          require_screen_share?: boolean | null
+          require_webcam?: boolean | null
+          snapshot_interval_seconds?: number | null
+          updated_at?: string | null
+          video_quality?: string | null
+        }
+        Update: {
+          ai_audio_analysis_enabled?: boolean | null
+          ai_behavior_analysis_enabled?: boolean | null
+          ai_face_detection_enabled?: boolean | null
+          ai_gaze_tracking_enabled?: boolean | null
+          ai_object_detection_enabled?: boolean | null
+          allow_tab_switching?: boolean | null
+          allowed_applications?: Json | null
+          audio_analysis_interval_seconds?: number | null
+          auto_pause_on_critical_violation?: boolean | null
+          blocked_applications?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          custom_rules?: Json | null
+          exam_id?: string | null
+          face_detection_interval_seconds?: number | null
+          id?: string
+          is_enabled?: boolean | null
+          max_looking_away_duration_seconds?: number | null
+          max_no_face_duration_seconds?: number | null
+          min_confidence_threshold?: number | null
+          notify_proctor_immediately?: boolean | null
+          quiz_id?: string | null
+          record_full_session?: boolean | null
+          record_violations_only?: boolean | null
+          require_fullscreen?: boolean | null
+          require_microphone?: boolean | null
+          require_screen_share?: boolean | null
+          require_webcam?: boolean | null
+          snapshot_interval_seconds?: number | null
+          updated_at?: string | null
+          video_quality?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proctoring_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_settings_exam_id_fkey"
+            columns: ["exam_id"]
+            isOneToOne: false
+            referencedRelation: "examinations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_settings_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "quizzes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proctoring_violations: {
+        Row: {
+          action_taken: string | null
+          created_at: string | null
+          description: string | null
+          event_id: string | null
+          evidence_urls: Json | null
+          exam_invalidated: boolean | null
+          id: string
+          is_false_positive: boolean | null
+          marks_deducted: number | null
+          review_notes: string | null
+          reviewed: boolean | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          session_id: string
+          severity: Database["public"]["Enums"]["violation_severity"]
+          timestamp: string | null
+          title: string
+          updated_at: string | null
+          violation_type: Database["public"]["Enums"]["violation_type"]
+        }
+        Insert: {
+          action_taken?: string | null
+          created_at?: string | null
+          description?: string | null
+          event_id?: string | null
+          evidence_urls?: Json | null
+          exam_invalidated?: boolean | null
+          id?: string
+          is_false_positive?: boolean | null
+          marks_deducted?: number | null
+          review_notes?: string | null
+          reviewed?: boolean | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          session_id: string
+          severity: Database["public"]["Enums"]["violation_severity"]
+          timestamp?: string | null
+          title: string
+          updated_at?: string | null
+          violation_type: Database["public"]["Enums"]["violation_type"]
+        }
+        Update: {
+          action_taken?: string | null
+          created_at?: string | null
+          description?: string | null
+          event_id?: string | null
+          evidence_urls?: Json | null
+          exam_invalidated?: boolean | null
+          id?: string
+          is_false_positive?: boolean | null
+          marks_deducted?: number | null
+          review_notes?: string | null
+          reviewed?: boolean | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          session_id?: string
+          severity?: Database["public"]["Enums"]["violation_severity"]
+          timestamp?: string | null
+          title?: string
+          updated_at?: string | null
+          violation_type?: Database["public"]["Enums"]["violation_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proctoring_violations_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_violations_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "proctoring_violations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "proctoring_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quiz_questions: {
         Row: {
           correct_answer: string | null
@@ -4010,6 +4661,12 @@ export type Database = {
         | "event_admin"
         | "finance_admin"
         | "it_admin"
+      alert_status:
+        | "pending"
+        | "acknowledged"
+        | "reviewing"
+        | "resolved"
+        | "escalated"
       permission_action:
         | "create"
         | "read"
@@ -4019,6 +4676,30 @@ export type Database = {
         | "export"
         | "assign"
         | "approve"
+      proctoring_event_type:
+        | "multiple_faces"
+        | "no_face"
+        | "face_not_matching"
+        | "looking_away"
+        | "object_detected"
+        | "audio_conversation"
+        | "audio_unusual"
+        | "tab_switch"
+        | "window_switch"
+        | "screen_share_detected"
+        | "fullscreen_exit"
+        | "browser_focus_lost"
+        | "copy_paste"
+        | "network_disconnection"
+        | "network_reconnection"
+        | "system_info"
+      proctoring_session_status:
+        | "pending"
+        | "active"
+        | "paused"
+        | "completed"
+        | "terminated"
+        | "failed"
       resource_type:
         | "students"
         | "faculty"
@@ -4055,6 +4736,19 @@ export type Database = {
         | "parent"
         | "alumni"
         | "super_admin"
+      violation_severity:
+        | "info"
+        | "low"
+        | "medium"
+        | "high"
+        | "critical"
+      violation_type:
+        | "identity_fraud"
+        | "unauthorized_assistance"
+        | "unauthorized_materials"
+        | "technical_violation"
+        | "behavioral_anomaly"
+        | "environmental_issue"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4190,6 +4884,13 @@ export const Constants = {
         "finance_admin",
         "it_admin",
       ],
+      alert_status: [
+        "pending",
+        "acknowledged",
+        "reviewing",
+        "resolved",
+        "escalated",
+      ],
       permission_action: [
         "create",
         "read",
@@ -4199,6 +4900,32 @@ export const Constants = {
         "export",
         "assign",
         "approve",
+      ],
+      proctoring_event_type: [
+        "multiple_faces",
+        "no_face",
+        "face_not_matching",
+        "looking_away",
+        "object_detected",
+        "audio_conversation",
+        "audio_unusual",
+        "tab_switch",
+        "window_switch",
+        "screen_share_detected",
+        "fullscreen_exit",
+        "browser_focus_lost",
+        "copy_paste",
+        "network_disconnection",
+        "network_reconnection",
+        "system_info",
+      ],
+      proctoring_session_status: [
+        "pending",
+        "active",
+        "paused",
+        "completed",
+        "terminated",
+        "failed",
       ],
       resource_type: [
         "students",
@@ -4239,6 +4966,21 @@ export const Constants = {
         "parent",
         "alumni",
         "super_admin",
+      ],
+      violation_severity: [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical",
+      ],
+      violation_type: [
+        "identity_fraud",
+        "unauthorized_assistance",
+        "unauthorized_materials",
+        "technical_violation",
+        "behavioral_anomaly",
+        "environmental_issue",
       ],
     },
   },

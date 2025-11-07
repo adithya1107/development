@@ -20,6 +20,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { VideoCallModal } from '@/components/VideoCallModal';
+import { meetingService } from '@/services/meetingService';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface TeacherParentInteractionProps {
   teacherData: any;
@@ -30,13 +33,19 @@ const TeacherParentInteraction = ({ teacherData }: TeacherParentInteractionProps
   const [meetings, setMeetings] = useState<any[]>([]);
   const [progressReports, setProgressReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { permissions } = usePermissions();
+
+  // Video call state
+  const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
+  const [currentMeeting, setCurrentMeeting] = useState<any>(null);
 
   const [newMeeting, setNewMeeting] = useState({
     student_id: '',
     parent_id: '',
     meeting_date: '',
     meeting_type: 'in_person',
-    agenda: ''
+    agenda: '',
+    duration_minutes: 30
   });
 
   const [newReport, setNewReport] = useState({
@@ -140,26 +149,58 @@ const TeacherParentInteraction = ({ teacherData }: TeacherParentInteractionProps
 
   const scheduleMeeting = async () => {
     try {
-      const { error } = await supabase
-        .from('parent_meetings')
-        .insert({
-          ...newMeeting,
-          teacher_id: teacherData.user_id
+      // Simple front-end validation to avoid sending bad requests
+      if (!newMeeting.student_id) {
+        toast({ title: 'Error', description: 'Please select a student', variant: 'destructive' });
+        return;
+      }
+
+      if (!newMeeting.meeting_date) {
+        toast({ title: 'Error', description: 'Please select a meeting date and time', variant: 'destructive' });
+        return;
+      }
+      // Use meetingService for video calls to create room automatically
+      if (newMeeting.meeting_type === 'video_call') {
+        const meeting = await meetingService.createMeeting({
+          teacher_id: teacherData.user_id,
+          student_id: newMeeting.student_id,
+          parent_id: newMeeting.parent_id || undefined,
+          meeting_date: newMeeting.meeting_date,
+          meeting_type: 'video_call',
+          agenda: newMeeting.agenda || undefined
         });
 
-      if (error) throw error;
+        if (!meeting) throw new Error('Failed to create meeting');
 
-      toast({
-        title: 'Success',
-        description: 'Meeting scheduled successfully'
-      });
+        toast({
+          title: 'Success',
+          description: 'Video meeting scheduled successfully with room created'
+        });
+      } else {
+        // For non-video meetings, use regular insert
+        const { error } = await supabase
+          .from('parent_meetings')
+          .insert({
+            ...newMeeting,
+            teacher_id: teacherData.user_id,
+            status: 'scheduled'
+          });
+
+        if (error) throw error;
+
+        toast({
+          title: 'Success',
+          description: 'Meeting scheduled successfully'
+        });
+      }
 
       setNewMeeting({
         student_id: '',
         parent_id: '',
         meeting_date: '',
         meeting_type: 'in_person',
-        agenda: ''
+        agenda: '',
+        duration_minutes: 30
       });
 
       fetchMeetings();
@@ -171,6 +212,19 @@ const TeacherParentInteraction = ({ teacherData }: TeacherParentInteractionProps
         variant: 'destructive'
       });
     }
+  };
+
+  const startVideoCall = (meeting: any) => {
+    if (!meeting.meeting_url) {
+      toast({
+        title: 'Error',
+        description: 'Video call URL not available. Please reschedule the meeting.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    setCurrentMeeting(meeting);
+    setIsVideoCallOpen(true);
   };
 
   const createProgressReport = async () => {
@@ -321,6 +375,22 @@ const TeacherParentInteraction = ({ teacherData }: TeacherParentInteractionProps
                         className="text-sm"
                       />
 
+                      {newMeeting.meeting_type === 'video_call' && (
+                        <div>
+                          <label className="text-xs sm:text-sm font-medium mb-2 block">
+                            Duration (minutes)
+                          </label>
+                          <Input
+                            type="number"
+                            min="15"
+                            max="120"
+                            value={newMeeting.duration_minutes}
+                            onChange={(e) => setNewMeeting({...newMeeting, duration_minutes: parseInt(e.target.value) || 30})}
+                            className="text-sm"
+                          />
+                        </div>
+                      )}
+
                       <Button onClick={scheduleMeeting} className="w-full text-sm">
                         Schedule Meeting
                       </Button>
@@ -360,6 +430,26 @@ const TeacherParentInteraction = ({ teacherData }: TeacherParentInteractionProps
                             {meeting.notes && (
                               <div className="text-xs sm:text-sm mt-2 p-2 bg-muted rounded">
                                 <span className="font-medium">Notes:</span> {meeting.notes}
+                              </div>
+                            )}
+                            
+                            {/* Video Call Button */}
+                            {meeting.meeting_type === 'video_call' && meeting.status === 'scheduled' && permissions.schedule_ptm_meetings && (
+                              <div className="mt-3">
+                                <Button 
+                                  onClick={() => startVideoCall(meeting)}
+                                  className="w-full sm:w-auto flex items-center gap-2"
+                                  size="sm"
+                                  variant="default"
+                                >
+                                  <Video className="h-4 w-4" />
+                                  Start Video Call
+                                </Button>
+                                {meeting.meeting_url && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Room ready
+                                  </p>
+                                )}
                               </div>
                             )}
                           </div>
@@ -535,6 +625,23 @@ const TeacherParentInteraction = ({ teacherData }: TeacherParentInteractionProps
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Video Call Modal */}
+      {currentMeeting && (
+        <VideoCallModal
+          isOpen={isVideoCallOpen}
+          onClose={() => {
+            setIsVideoCallOpen(false);
+            setCurrentMeeting(null);
+            fetchMeetings(); // Refresh to show updated status
+          }}
+          meetingUrl={currentMeeting.meeting_url}
+          meetingId={currentMeeting.id}
+          userId={teacherData.user_id}
+          userName={`${teacherData.first_name} ${teacherData.last_name}`}
+          userRole="teacher"
+        />
+      )}
     </div>
   );
 };

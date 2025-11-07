@@ -21,7 +21,8 @@ import {
   CheckCircle,
   Info,
   X,
-  UserCircle
+  UserCircle,
+  Video
 } from 'lucide-react';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
 import AdminDashboard from '../components/admin/AdminDashboard';
@@ -37,6 +38,8 @@ import RoleManagement from '../components/admin/RoleManagement';
 import AuditLogs from '../components/admin/AuditLogs';
 import SystemSettings from '../components/admin/SystemSettings';
 import StudentEnrollmentManagement from '@/components/teacher/StudentEnrollmentManagement';
+import AdminProctoringManagement from './AdminProctoringManagement';
+import AdminPTMManagement from '@/components/admin/AdminPTMManagement';
 
 interface TagFeature {
   feature_key: string;
@@ -256,6 +259,17 @@ const Admin = () => {
           });
         }
         
+        // Add proctoring management (super_admin exclusive)
+        if (!featuresMap.has('proctoring')) {
+          featuresMap.set('proctoring', {
+            feature_key: 'proctoring',
+            feature_name: 'Proctoring Management',
+            feature_route: '/admin/proctoring',
+            icon: 'Video',
+            display_order: 5.5
+          });
+        }
+        
         // Add role management (super_admin exclusive)
         if (!featuresMap.has('roles')) {
           featuresMap.set('roles', {
@@ -264,6 +278,17 @@ const Admin = () => {
             feature_route: '/admin/roles',
             icon: 'Shield',
             display_order: 6
+          });
+        }
+
+        // Add PTM / Video Calls management for super admins
+        if (!featuresMap.has('ptm')) {
+          featuresMap.set('ptm', {
+            feature_key: 'ptm',
+            feature_name: 'PTM Video Calls',
+            feature_route: '/admin/ptm',
+            icon: 'Video',
+            display_order: 5.6
           });
         }
       } else {
@@ -279,6 +304,17 @@ const Admin = () => {
             icon: 'Users',
             display_order: 1.5
           });
+          // Give user_admins access to PTM management as well
+          if (!featuresMap.has('ptm')) {
+            console.log('Adding PTM feature for user_admin tag');
+            featuresMap.set('ptm', {
+              feature_key: 'ptm',
+              feature_name: 'PTM Video Calls',
+              feature_route: '/admin/ptm',
+              icon: 'Video',
+              display_order: 5.6
+            });
+          }
         }
         
         // Remove role management if user doesn't have super_admin
@@ -437,7 +473,9 @@ const Admin = () => {
                 { feature_key: 'events', feature_name: 'Event Management', feature_route: '/admin/events', icon: 'Calendar', display_order: 3 },
                 { feature_key: 'finance', feature_name: 'Finance Management', feature_route: '/admin/finance', icon: 'DollarSign', display_order: 4 },
                 { feature_key: 'facilities', feature_name: 'Facility Management', feature_route: '/admin/facilities', icon: 'Building', display_order: 5 },
-                { feature_key: 'roles', feature_name: 'Role Management', feature_route: '/admin/roles', icon: 'Shield', display_order: 6 },
+                { feature_key: 'proctoring', feature_name: 'Proctoring Management', feature_route: '/admin/proctoring', icon: 'Video', display_order: 5.5 },
+                  { feature_key: 'roles', feature_name: 'Role Management', feature_route: '/admin/roles', icon: 'Shield', display_order: 6 },
+                  { feature_key: 'ptm', feature_name: 'PTM Video Calls', feature_route: '/admin/ptm', icon: 'Video', display_order: 5.6 },
                 { feature_key: 'audit', feature_name: 'Audit Logs', feature_route: '/admin/audit', icon: 'FileText', display_order: 7 },
                 { feature_key: 'system', feature_name: 'System Settings', feature_route: '/admin/system', icon: 'Settings', display_order: 8 }
               ]);
@@ -537,7 +575,8 @@ const Admin = () => {
       Building,
       Shield,
       FileText,
-      Settings
+      Settings,
+      Video
     };
     return iconMap[iconName] || Activity;
   };
@@ -651,6 +690,10 @@ const Admin = () => {
         return <FinanceManagement userProfile={userProfile} />;
       case 'facilities':
         return <FacilityManagement userProfile={userProfile} />;
+      case 'proctoring':
+        return <AdminProctoringManagement />;
+      case 'ptm':
+        return <AdminPTMManagement />;
       case 'roles':
         return <RoleManagement userProfile={userProfile} adminRoles={adminRoles} />;
       case 'audit':

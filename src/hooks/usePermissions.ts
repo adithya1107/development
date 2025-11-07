@@ -37,6 +37,19 @@ export interface UserPermissions {
   // Alumni specific
   alumni_contributions: boolean;
   alumni_events: boolean;
+  
+  // Proctoring
+  take_proctored_exams: boolean;
+  monitor_proctoring: boolean;
+  review_proctoring_sessions: boolean;
+  manage_proctoring_settings: boolean;
+  configure_ai_detection: boolean;
+  view_proctoring_analytics: boolean;
+  
+  // PTM Video Calls
+  schedule_ptm_meetings: boolean;
+  join_ptm_meetings: boolean;
+  view_ptm_meetings: boolean;
 }
 
 const DEFAULT_PERMISSIONS: UserPermissions = {
@@ -63,6 +76,15 @@ const DEFAULT_PERMISSIONS: UserPermissions = {
   support_tickets: false,
   alumni_contributions: false,
   alumni_events: false,
+  take_proctored_exams: false,
+  monitor_proctoring: false,
+  review_proctoring_sessions: false,
+  manage_proctoring_settings: false,
+  configure_ai_detection: false,
+  view_proctoring_analytics: false,
+  schedule_ptm_meetings: false,
+  join_ptm_meetings: false,
+  view_ptm_meetings: false,
 };
 
 // Permission sets for different user types
@@ -80,6 +102,7 @@ const PERMISSION_SETS = {
     apply_hostel: true,
     facility_requests: true,
     support_tickets: true,
+    take_proctored_exams: true,
   },
   teacher: {
     view_personal_dashboard: true,
@@ -97,6 +120,11 @@ const PERMISSION_SETS = {
     request_certificates: true,
     facility_requests: true,
     support_tickets: true,
+    monitor_proctoring: true,
+    review_proctoring_sessions: true,
+    schedule_ptm_meetings: true,
+    join_ptm_meetings: true,
+    view_ptm_meetings: true,
   },
   parent: {
     view_personal_dashboard: true,
@@ -106,6 +134,8 @@ const PERMISSION_SETS = {
     view_child_fees: true,
     make_child_payments: true,
     support_tickets: true,
+    join_ptm_meetings: true,
+    view_ptm_meetings: true,
   },
   alumni: {
     view_personal_dashboard: true,
@@ -115,6 +145,32 @@ const PERMISSION_SETS = {
     alumni_contributions: true,
     alumni_events: true,
     support_tickets: true,
+  },
+  admin: {
+    view_personal_dashboard: true,
+    view_college_branding: true,
+    view_submit_assignments: true,
+    review_assignments: true,
+    view_grades: true,
+    assign_grades: true,
+    mark_attendance: true,
+    view_attendance: true,
+    upload_materials: true,
+    join_forums: true,
+    view_fees: true,
+    review_fees: true,
+    request_certificates: true,
+    facility_requests: true,
+    support_tickets: true,
+    monitor_proctoring: true,
+    review_proctoring_sessions: true,
+    manage_proctoring_settings: true,
+    configure_ai_detection: true,
+    view_proctoring_analytics: true,
+    // PTM Video Call permissions for admins
+    schedule_ptm_meetings: true,
+    join_ptm_meetings: true,
+    view_ptm_meetings: true,
   },
 };
 
