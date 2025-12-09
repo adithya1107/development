@@ -157,36 +157,114 @@ const Alumni = () => {
     });
   };
 
+  // useEffect(() => {
+  //   const initializeUser = async () => {
+  //     try {
+  //       const userData = localStorage.getItem('colcord_user');
+  //       if (!userData) {
+  //         navigate('/');
+  //         return;
+  //       }
+
+  //       const parsedUser = JSON.parse(userData);
+  //       if (parsedUser.user_type !== 'alumni') {
+  //         toast({
+  //           title: 'Access Denied',
+  //           description: 'This area is for alumni only.',
+  //           variant: 'destructive',
+  //         });
+  //         navigate('/');
+  //         return;
+  //       }
+
+  //       setUser(parsedUser);
+  //     } catch (error) {
+  //       console.error('Error checking user:', error);
+  //       navigate('/');
+  //     } finally {
+  //       setIsLoading(false);
+  //     }
+  //   };
+  //   initializeUser();
+  // }, [navigate]);
+
+
   useEffect(() => {
-    const initializeUser = async () => {
-      try {
-        const userData = localStorage.getItem('colcord_user');
-        if (!userData) {
+      const checkUser = async () => {
+        try {
+          // First check Supabase session
+          const { data: { session }, error } = await supabase.auth.getSession();
+  
+          if (error) {
+            console.error('Session error:', error);
+            navigate('/');
+            return;
+          }
+  
+          if (session?.user) {
+            // Get user profile from database
+            const { data: profile, error: profileError } = await supabase
+              .from('user_profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+  
+            if (profileError || !profile) {
+              console.error('Profile error:', profileError);
+              navigate('/');
+              return;
+            }
+  
+            if (profile.user_type !== 'alumni') {
+              toast({
+                title: 'Access Denied',
+                description: 'This area is for alumni only.',
+                variant: 'destructive',
+              });
+              navigate('/');
+              return;
+            }
+  
+            setUser({
+              user_id: profile.id,
+              user_type: profile.user_type,
+              first_name: profile.first_name,
+              last_name: profile.last_name,
+              college_id: profile.college_id,
+              user_code: profile.user_code,
+              email: profile.email
+            });
+          } else {
+            // Fallback to localStorage
+            const userData = localStorage.getItem('colcord_user');
+            if (!userData) {
+              navigate('/');
+              return;
+            }
+  
+            const parsedUser = JSON.parse(userData);
+            if (parsedUser.user_type !== 'alumni') {
+              toast({
+                title: 'Access Denied',
+                description: 'This area is for alumni only.',
+                variant: 'destructive',
+              });
+              navigate('/');
+              return;
+            }
+            setUser(parsedUser);
+          }
+        } catch (error) {
+          console.error('Error checking user:', error);
           navigate('/');
-          return;
+        } finally {
+          console.log(user);
+          setIsLoading(false);
         }
-
-        const parsedUser = JSON.parse(userData);
-        if (parsedUser.user_type !== 'alumni') {
-          toast({
-            title: 'Access Denied',
-            description: 'This area is for alumni only.',
-            variant: 'destructive',
-          });
-          navigate('/');
-          return;
-        }
-
-        setUser(parsedUser);
-      } catch (error) {
-        console.error('Error checking user:', error);
-        navigate('/');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    initializeUser();
-  }, [navigate]);
+      };
+  
+      checkUser();
+    }, [navigate]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
