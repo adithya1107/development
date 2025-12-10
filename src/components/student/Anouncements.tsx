@@ -24,6 +24,7 @@ interface CommunicationCenterProps {
 const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
   const [announcements, setAnnouncements] = useState([]);
   const [forums, setForums] = useState([]);
+  const [alumniEvents, setAlumniEvents] = useState([]);
   const [selectedForum, setSelectedForum] = useState<any>(null);
   const [forumPosts, setForumPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +67,9 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
         .order('created_at', { ascending: false });
 
       setForums(forumsData || []);
+
+            // Fetch Alumni Events
+
 
     } catch (error) {
       console.error('Error fetching communication data:', error);
@@ -183,7 +187,7 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
 
       <Tabs defaultValue="announcements" className="space-y-4 w-full">
         <div className="w-full">
-          <TabsList className="grid w-full grid-cols-2 h-auto">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger value="announcements" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
               <Bell className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
               <span className="truncate">Announcements</span>
@@ -191,6 +195,10 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
             <TabsTrigger value="forums" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
               <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
               <span className="truncate">Discussion Forums</span>
+            </TabsTrigger>
+            <TabsTrigger value="alumni-events" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
+              <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+              <span className="truncate">Alumni Events</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -331,6 +339,58 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
             </div>
           )}
         </TabsContent>
+
+        <TabsContent value="alumni-events" className="space-y-4">
+          {alumniEvents.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-8">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500 text-sm sm:text-base">No alumni events right now</p>
+              </CardContent>
+            </Card>
+          ) : (
+            alumniEvents.map((event: any) => (
+              <Card key={event.id} className="hover:shadow-md transition-shadow w-full">
+                <CardContent className="p-4 sm:p-6">
+                  
+                  {/* Title */}
+                  <h3 className="text-lg font-semibold mb-1">{event.title}</h3>
+                  <p className="text-gray-700 mb-3">{event.description}</p>
+
+                  {/* Event Type */}
+                  <Badge variant="outline" className="mb-2">
+                    {event.event_type}
+                  </Badge>
+
+                  {/* CONDITIONAL */}
+                  {event.event_type === "online" && (
+                    <p className="text-blue-600 text-sm">
+                      Google Meet: <a href={event.meet_link} target="_blank" className="underline">{event.meet_link}</a>
+                    </p>
+                  )}
+
+                  {event.event_type === "offline" && (
+                    <p className="text-gray-900 text-sm">Venue: {event.venue}</p>
+                  )}
+
+                  {event.event_type === "hybrid" && (
+                    <>
+                      <p className="text-blue-600 text-sm">
+                        Google Meet: <a href={event.meet_link} target="_blank" className="underline">{event.meet_link}</a>
+                      </p>
+                      <p className="text-gray-900 text-sm">Venue: {event.venue}</p>
+                    </>
+                  )}
+
+                  <div className="mt-4">
+                    <Button>Register</Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </TabsContent>
+
       </Tabs>
     </div>
   );

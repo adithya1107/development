@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from "@/components/ui/use-toast";
 import { Users, MessageSquare, Plus, Search, Send } from 'lucide-react';
+import AlumniNetworkingHub from './AlumniNetworkingHub';
 
 interface AlumniNetworkingProps {
   user: any;
@@ -179,12 +180,15 @@ const AlumniNetworking = ({ user }: AlumniNetworkingProps) => {
   return (
     <div className="space-y-4 sm:space-y-6 p-2 sm:p-4">
       <Tabs defaultValue="networks" className="space-y-4 sm:space-y-6">
-        <TabsList className="grid w-full grid-cols-2 h-auto">
+        <TabsList className="grid w-full grid-cols-3 h-auto">
           <TabsTrigger value="networks" className="text-xs sm:text-sm py-2 sm:py-2.5">
             Alumni Networks
           </TabsTrigger>
           <TabsTrigger value="forums" className="text-xs sm:text-sm py-2 sm:py-2.5">
             Discussion Forums
+          </TabsTrigger>
+          <TabsTrigger value="hub" className="text-xs sm:text-sm py-2 sm:py-2.5">
+            Networking Hub
           </TabsTrigger>
         </TabsList>
 
@@ -352,6 +356,11 @@ const AlumniNetworking = ({ user }: AlumniNetworkingProps) => {
             </div>
           </div>
         </TabsContent>
+
+        <TabsContent value="hub">
+          <AlumniNetworkingHub alumniData={user} />
+        </TabsContent>
+
       </Tabs>
     </div>
   );
