@@ -21,12 +21,19 @@ const AlumniEvents = ({ user }: AlumniEventsProps) => {
   const [filterType, setFilterType] = useState('all');
 
   useEffect(() => {
-    fetchEvents();
-    fetchMyRegistrations();
+    if (user) {
+      fetchEvents();
+      fetchMyRegistrations();
+    }
   }, [user]);
 
   const fetchEvents = async () => {
     try {
+      // First check if there are any events at all
+      const { data: allEvents, error: allError } = await supabase
+        .from('events')
+        .select('*');
+    
       const { data, error } = await supabase
         .from('events')
         .select('*')
