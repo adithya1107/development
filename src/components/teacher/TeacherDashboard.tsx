@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { BookOpen, Users, FileText, Calendar, Award, Upload } from 'lucide-react';
 import PermissionWrapper from '@/components/PermissionWrapper';
 import { supabase } from '@/integrations/supabase/client';
-
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+dayjs.extend(relativeTime);
 interface TeacherDashboardProps {
   teacherData: any;
   onNavigate?: (tab: string) => void;
@@ -37,34 +39,41 @@ interface CourseInfo {
   academic_year: string;
   studentCount: number;
 }
-
+interface TeacherActivity {
+  activity_type: string;
+  reference_id: string;
+  title: string;
+  description: string;
+  activity_time: string;
+  metadata: any;
+}
 // Recent activities configuration
-const RECENT_ACTIVITIES = [
-  {
-    title: 'Assignment Graded',
-    description: 'Data Structures - 15 submissions reviewed',
-    time: '1 hour ago',
-    permission: 'review_assignments' as const
-  },
-  {
-    title: 'Attendance Marked',
-    description: 'Computer Networks - 30 students present',
-    time: '3 hours ago',
-    permission: 'mark_attendance' as const
-  },
-  {
-    title: 'Material Uploaded',
-    description: 'Database Systems - Lecture slides added',
-    time: '1 day ago',
-    permission: 'upload_materials' as const
-  },
-  {
-    title: 'Grade Updated',
-    description: 'Midterm scores published for CS301',
-    time: '2 days ago',
-    permission: 'assign_grades' as const
-  }
-];
+// const RECENT_ACTIVITIES = [
+//   {
+//     title: 'Assignment Graded',
+//     description: 'Data Structures - 15 submissions reviewed',
+//     time: '1 hour ago',
+//     permission: 'review_assignments' as const
+//   },
+//   {
+//     title: 'Attendance Marked',
+//     description: 'Computer Networks - 30 students present',
+//     time: '3 hours ago',
+//     permission: 'mark_attendance' as const
+//   },
+//   {
+//     title: 'Material Uploaded',
+//     description: 'Database Systems - Lecture slides added',
+//     time: '1 day ago',
+//     permission: 'upload_materials' as const
+//   },
+//   {
+//     title: 'Grade Updated',
+//     description: 'Midterm scores published for CS301',
+//     time: '2 days ago',
+//     permission: 'assign_grades' as const
+//   }
+// ];
 
 // Quick actions configuration with navigation targets
 const QUICK_ACTIONS = [
@@ -111,15 +120,16 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
   });
   const [todayClasses, setTodayClasses] = useState<TodayClass[]>([]);
   const [courses, setCourses] = useState<CourseInfo[]>([]);
-
+  const [recentActivities, setRecentActivities] = useState<TeacherActivity[]>([]);
   useEffect(() => {
-    
+
     // Try multiple possible ID fields
     const teacherId = teacherData?.id || teacherData?.user_id;
-    
-      fetchTeacherStats();
-      fetchTodayClasses();
-      fetchTeacherCourses();
+
+    fetchTeacherStats();
+    fetchTodayClasses();
+    fetchTeacherCourses();
+    fetchTeacherActivities();
   }, [teacherData?.id, teacherData?.user_id]);
 
   const fetchTeacherStats = async () => {
@@ -154,8 +164,8 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
           .in('course_id', courseIds)
           .eq('status', 'enrolled');
 
-          const uniqueStudents = new Set(enrollmentsData?.map(e => e.student_id) || []);
-          totalStudents = uniqueStudents.size;
+        const uniqueStudents = new Set(enrollmentsData?.map(e => e.student_id) || []);
+        totalStudents = uniqueStudents.size;
       }
 
       // 3. Count pending assignments (submissions without grades)
@@ -177,7 +187,7 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
               .select('*', { count: 'exact', head: true })
               .in('assignment_id', assignmentIds)
               .is('marks_obtained', null);
-            
+
             if (subError) {
               console.error('Submissions query error:', subError);
             } else {
@@ -215,12 +225,12 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
   const fetchTodayClasses = async () => {
     try {
       const teacherId = teacherData?.id || teacherData?.user_id;
-      
+
       if (!teacherId) {
         console.error('Cannot fetch today classes: No teacher ID available');
         return;
       }
-      
+
       const today = new Date();
       const dayOfWeek = today.getDay();
       const todayDate = today.toISOString().split('T')[0];
@@ -273,7 +283,7 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
               .eq('course_id', courseData.id)
               .eq('status', 'enrolled');
 
-            const roomLocation = roomData 
+            const roomLocation = roomData
               ? `${roomData.building ? roomData.building + ' - ' : ''}Room ${roomData.room_number}`
               : 'TBA';
 
@@ -315,7 +325,7 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
           }
 
           allClasses.push({
-            course: courseInfo 
+            course: courseInfo
               ? `${courseInfo.course_code} - ${courseInfo.course_name} (${extraClass.class_type})`
               : `${extraClass.title} (${extraClass.class_type})`,
             time: `${formatTime(extraClass.start_time)} - ${formatTime(extraClass.end_time)}`,
@@ -338,11 +348,11 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
   const fetchTeacherCourses = async () => {
     try {
       const teacherId = teacherData?.id || teacherData?.user_id;
-      
+
       if (!teacherId) {
         return;
       }
-      
+
 
       // Fetch courses taught by this teacher
       const { data: coursesData, error } = await supabase
@@ -410,6 +420,28 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
     }
   };
 
+  const fetchTeacherActivities = async () => {
+    try {
+      const teacherId = teacherData?.id || teacherData?.user_id;
+      if (!teacherId) return;
+
+      const { data, error } = await supabase.rpc('get_teacher_activities', {
+        p_teacher_id: teacherId,
+        p_limit: 10
+      });
+
+      if (error) {
+        console.error('Error fetching activities:', error);
+        return;
+      }
+
+      setRecentActivities(data || []);
+    } catch (err) {
+      console.error('Unexpected error:', err);
+    }
+  };
+
+
   // Dashboard statistics configuration
   const TEACHER_STATS = [
     {
@@ -461,19 +493,20 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
     );
   };
 
-  const renderActivity = (activity: typeof RECENT_ACTIVITIES[0], index: number) => (
-    <PermissionWrapper key={index} permission={activity.permission}>
+  const renderActivity = (activity: TeacherActivity, index: number) => (
+    <div key={activity.reference_id} >
       <div className="flex flex-row items-start justify-start space-x-2 p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 transition-all duration-300 hover:shadow-md hover:shadow-blue-500/5 will-change-transform">
         <div className="flex-shrink-0 mt-2 sm:mt-2.5">
           <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse shadow-lg shadow-blue-400/50"></div>
         </div>
         <div className="flex flex-col justify-center flex-1 min-w-0">
           <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{activity.title}</p>
+           <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{activity.activity_type}</p>
           <p className="text-xs sm:text-sm text-muted-foreground leading-snug line-clamp-2">{activity.description}</p>
-          <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{activity.time}</p>
+          <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{dayjs(activity.activity_time).fromNow()}</p>
         </div>
       </div>
-    </PermissionWrapper>
+    </div>
   );
 
   const renderQuickAction = (action: typeof QUICK_ACTIONS[0], index: number) => {
@@ -548,7 +581,12 @@ const TeacherDashboard = ({ teacherData, onNavigate }: TeacherDashboardProps) =>
             <CardDescription className="text-sm">Your latest teaching activities</CardDescription>
           </CardHeader>
           <CardContent className="h-[calc(100%-100px)] custom-scrollbar overflow-x-hidden space-y-3 sm:space-y-4 p-4 sm:p-6">
-            {RECENT_ACTIVITIES.map(renderActivity)}
+            {recentActivities.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center">
+                No recent activity found
+              </p>
+            )}
+            {recentActivities.map(renderActivity)}
           </CardContent>
         </Card>
 
