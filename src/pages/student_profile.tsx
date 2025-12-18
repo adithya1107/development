@@ -94,6 +94,15 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string>("");
+  const [aadharDocUrl, setAadharDocUrl] = useState<string | null>(null);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [deletingDoc, setDeletingDoc] = useState(false);
+  const [marksheet10Url, setMarksheet10Url] = useState<string | null>(null);
+  const [uploading10, setUploading10] = useState(false);
+  const [deleting10, setDeleting10] = useState(false);
+  const [marksheet12Url, setMarksheet12Url] = useState<string | null>(null);
+  const [uploading12, setUploading12] = useState(false);
+  const [deleting12, setDeleting12] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -181,6 +190,46 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
         // setDebugInfo(`Found ${educationData?.length || 0} education records, ${academicData?.length || 0} academic records, ${scholarshipData?.length || 0} scholarships`);
       }
 
+      // Check for existing documents
+      const { data: fileList } = await supabase.storage
+        .from("Student Documents")
+        .list(studentData.user_id);
+
+      if (fileList) {
+        // Check Aadhar
+        if (fileList.some(file => file.name === "aadhar.pdf")) {
+          const aadharPath = `${studentData.user_id}/aadhar.pdf`;
+          const { data: signedUrl } = await supabase.storage
+            .from("Student Documents")
+            .createSignedUrl(aadharPath, 60 * 60);
+          if (signedUrl) {
+            setAadharDocUrl(signedUrl.signedUrl);
+          }
+        }
+
+        // Check 10th Marksheet
+        if (fileList.some(file => file.name === "10th_marksheet.pdf")) {
+          const marksheet10Path = `${studentData.user_id}/10th_marksheet.pdf`;
+          const { data: signedUrl } = await supabase.storage
+            .from("Student Documents")
+            .createSignedUrl(marksheet10Path, 60 * 60);
+          if (signedUrl) {
+            setMarksheet10Url(signedUrl.signedUrl);
+          }
+        }
+
+        // Check 12th Marksheet
+        if (fileList.some(file => file.name === "12th_marksheet.pdf")) {
+          const marksheet12Path = `${studentData.user_id}/12th_marksheet.pdf`;
+          const { data: signedUrl } = await supabase.storage
+            .from("Student Documents")
+            .createSignedUrl(marksheet12Path, 60 * 60);
+          if (signedUrl) {
+            setMarksheet12Url(signedUrl.signedUrl);
+          }
+        }
+      }
+
       setLoading(false);
     };
 
@@ -248,6 +297,195 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
 
     setAvatarUrl(`${pub?.publicUrl}?t=${Date.now()}`);
     setUploading(false);
+  };
+
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setError("Please upload a PDF file only.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("File size must be less than 5MB.");
+      return;
+    }
+
+    setUploadingDoc(true);
+    setError(null);
+
+    const filePath = `${studentData.user_id}/aadhar.pdf`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("Student Documents")
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      setError("Failed to upload document. Please try again.");
+      setUploadingDoc(false);
+      return;
+    }
+
+    const { data: signedUrl } = await supabase.storage
+      .from("Student Documents")
+      .createSignedUrl(filePath, 60 * 60);
+
+    if (signedUrl) {
+      setAadharDocUrl(signedUrl.signedUrl);
+    }
+    setUploadingDoc(false);
+  };
+
+  const handleDocumentDelete = async () => {
+    if (!confirm("Are you sure you want to delete this document?")) {
+      return;
+    }
+
+    setDeletingDoc(true);
+    setError(null);
+
+    const filePath = `${studentData.user_id}/aadhar.pdf`;
+
+    const { error: deleteError } = await supabase.storage
+      .from("Student Documents")
+      .remove([filePath]);
+
+    if (deleteError) {
+      setError("Failed to delete document. Please try again.");
+      setDeletingDoc(false);
+      return;
+    }
+
+    setAadharDocUrl(null);
+    setDeletingDoc(false);
+  };
+
+  const handleMarksheet10Upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setError("Please upload a PDF file only.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("File size must be less than 5MB.");
+      return;
+    }
+
+    setUploading10(true);
+    setError(null);
+
+    const filePath = `${studentData.user_id}/10th_marksheet.pdf`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("Student Documents")
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      setError("Failed to upload 10th marksheet. Please try again.");
+      setUploading10(false);
+      return;
+    }
+
+    const { data: signedUrl } = await supabase.storage
+      .from("Student Documents")
+      .createSignedUrl(filePath, 60 * 60);
+
+    if (signedUrl) {
+      setMarksheet10Url(signedUrl.signedUrl);
+    }
+    setUploading10(false);
+  };
+
+  const handleMarksheet10Delete = async () => {
+    if (!confirm("Are you sure you want to delete this document?")) {
+      return;
+    }
+
+    setDeleting10(true);
+    setError(null);
+
+    const filePath = `${studentData.user_id}/10th_marksheet.pdf`;
+
+    const { error: deleteError } = await supabase.storage
+      .from("Student Documents")
+      .remove([filePath]);
+
+    if (deleteError) {
+      setError("Failed to delete 10th marksheet. Please try again.");
+      setDeleting10(false);
+      return;
+    }
+
+    setMarksheet10Url(null);
+    setDeleting10(false);
+  };
+
+  const handleMarksheet12Upload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setError("Please upload a PDF file only.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("File size must be less than 5MB.");
+      return;
+    }
+
+    setUploading12(true);
+    setError(null);
+
+    const filePath = `${studentData.user_id}/12th_marksheet.pdf`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("Student Documents")
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      setError("Failed to upload 12th marksheet. Please try again.");
+      setUploading12(false);
+      return;
+    }
+
+    const { data: signedUrl } = await supabase.storage
+      .from("Student Documents")
+      .createSignedUrl(filePath, 60 * 60);
+
+    if (signedUrl) {
+      setMarksheet12Url(signedUrl.signedUrl);
+    }
+    setUploading12(false);
+  };
+
+  const handleMarksheet12Delete = async () => {
+    if (!confirm("Are you sure you want to delete this document?")) {
+      return;
+    }
+
+    setDeleting12(true);
+    setError(null);
+
+    const filePath = `${studentData.user_id}/12th_marksheet.pdf`;
+
+    const { error: deleteError } = await supabase.storage
+      .from("Student Documents")
+      .remove([filePath]);
+
+    if (deleteError) {
+      setError("Failed to delete 12th marksheet. Please try again.");
+      setDeleting12(false);
+      return;
+    }
+
+    setMarksheet12Url(null);
+    setDeleting12(false);
   };
 
   return (
@@ -835,6 +1073,209 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
             </div>
           </div>
         )}
+
+        {/* Documents Section */}
+        <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-4 sm:p-8">
+          <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-6 flex items-center">
+            <FileText className="h-6 w-6 mr-3 text-role-student" />
+            Documents
+          </h2>
+
+          {/* Aadhar Card Upload */}
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-4 sm:p-6 hover:bg-white/10 transition-colors mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <CreditCard className="h-5 w-5 text-role-student" />
+                  <h3 className="text-lg font-semibold text-foreground">Aadhar Card</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Upload your Aadhar card in PDF format (max 5MB)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {aadharDocUrl ? (
+                  <>
+                    <a
+                      href={aadharDocUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center space-x-2 px-4 py-2 bg-green-500/20 text-green-400 border border-green-500/30 rounded-lg hover:bg-green-500/30 transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      <span className="text-sm font-medium">View Document</span>
+                    </a>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDocumentDelete}
+                      disabled={deletingDoc}
+                      className="flex items-center space-x-2"
+                    >
+                      {deletingDoc ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                      <span className="text-sm font-medium">
+                        {deletingDoc ? "Deleting..." : "Delete"}
+                      </span>
+                    </Button>
+                  </>
+                ) : (
+                  <label className="flex items-center space-x-2 px-4 py-2 bg-role-student/20 text-role-student border border-role-student/30 rounded-lg hover:bg-role-student/30 transition-colors cursor-pointer">
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={handleDocumentUpload}
+                      disabled={uploadingDoc}
+                    />
+                    {uploadingDoc ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {uploadingDoc ? "Uploading..." : "Upload Document"}
+                    </span>
+                  </label>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 10th Marksheet Upload */}
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-4 sm:p-6 hover:bg-white/10 transition-colors mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <GraduationCap className="h-5 w-5 text-role-student" />
+                  <h3 className="text-lg font-semibold text-foreground">10th Marksheet</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Upload your 10th grade marksheet in PDF format (max 5MB)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {marksheet10Url ? (
+                  <>
+                    <a
+                      href={marksheet10Url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center space-x-2 px-4 py-2 bg-green-500/20 text-green-400 border border-green-500/30 rounded-lg hover:bg-green-500/30 transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      <span className="text-sm font-medium">View Document</span>
+                    </a>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleMarksheet10Delete}
+                      disabled={deleting10}
+                      className="flex items-center space-x-2"
+                    >
+                      {deleting10 ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                      <span className="text-sm font-medium">
+                        {deleting10 ? "Deleting..." : "Delete"}
+                      </span>
+                    </Button>
+                  </>
+                ) : (
+                  <label className="flex items-center space-x-2 px-4 py-2 bg-role-student/20 text-role-student border border-role-student/30 rounded-lg hover:bg-role-student/30 transition-colors cursor-pointer">
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={handleMarksheet10Upload}
+                      disabled={uploading10}
+                    />
+                    {uploading10 ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {uploading10 ? "Uploading..." : "Upload Document"}
+                    </span>
+                  </label>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 12th Marksheet Upload */}
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-4 sm:p-6 hover:bg-white/10 transition-colors">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-2">
+                  <GraduationCap className="h-5 w-5 text-role-student" />
+                  <h3 className="text-lg font-semibold text-foreground">12th Marksheet</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Upload your 12th grade marksheet in PDF format (max 5MB)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {marksheet12Url ? (
+                  <>
+                    <a
+                      href={marksheet12Url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center space-x-2 px-4 py-2 bg-green-500/20 text-green-400 border border-green-500/30 rounded-lg hover:bg-green-500/30 transition-colors"
+                    >
+                      <FileText className="h-4 w-4" />
+                      <span className="text-sm font-medium">View Document</span>
+                    </a>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleMarksheet12Delete}
+                      disabled={deleting12}
+                      className="flex items-center space-x-2"
+                    >
+                      {deleting12 ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                      <span className="text-sm font-medium">
+                        {deleting12 ? "Deleting..." : "Delete"}
+                      </span>
+                    </Button>
+                  </>
+                ) : (
+                  <label className="flex items-center space-x-2 px-4 py-2 bg-role-student/20 text-role-student border border-role-student/30 rounded-lg hover:bg-role-student/30 transition-colors cursor-pointer">
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      className="hidden"
+                      onChange={handleMarksheet12Upload}
+                      disabled={uploading12}
+                    />
+                    {uploading12 ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {uploading12 ? "Uploading..." : "Upload Document"}
+                    </span>
+                  </label>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

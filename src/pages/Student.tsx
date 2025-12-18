@@ -85,6 +85,7 @@ const Student = () => {
   const [hasClubAccess, setHasClubAccess] = useState(false);
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   
 
   const notificationRef = useRef<HTMLDivElement>(null);
@@ -183,6 +184,22 @@ const Student = () => {
             
             // NEW: Check club access after setting student data
             await checkClubAccess(profile.id);
+            
+            // Fetch profile photo
+            const { data: studentProfile } = await supabase
+              .from('student')
+              .select('photo_path')
+              .eq('id', profile.id)
+              .single();
+            
+            if (studentProfile?.photo_path) {
+              const { data: signedUrl } = await supabase.storage
+                .from('profile_photo')
+                .createSignedUrl(studentProfile.photo_path, 60 * 60);
+              if (signedUrl) {
+                setProfilePhotoUrl(signedUrl.signedUrl);
+              }
+            }
           } else {
             navigate('/');
           }
@@ -568,9 +585,17 @@ const Student = () => {
                   variant="ghost" 
                   size="icon"
                   onClick={handleUserMenuClick}
-                  className="h-9 w-9 rounded-lg hover:bg-white/10 transition-colors"
+                  className="h-9 w-9 rounded-full hover:bg-white/10 transition-colors p-0 overflow-hidden !rounded-full"
                 >
-                  <User className="h-5 w-5 text-foreground" />
+                  {profilePhotoUrl ? (
+                    <img
+                      src={profilePhotoUrl}
+                      alt="Profile"
+                      className="h-full w-full object-cover rounded-full"
+                    />
+                  ) : (
+                    <User className="h-5 w-5 text-foreground" />
+                  )}
                 </Button>
 
                 {/* User Menu Dropdown */}
@@ -582,9 +607,19 @@ const Student = () => {
                         <button
                           type="button"
                           onClick={handleProfileIconClick}
-                          className="h-10 sm:h-12 w-10 sm:w-12 bg-role-student/20 rounded-full flex items-center justify-center transition-all duration-200 ease-in-out hover:bg-role-student/30 active:scale-95 focus:outline-none focus:ring-2 focus:ring-role-student focus:ring-offset-2 focus:ring-offset-background"
+                          className="h-10 sm:h-12 w-10 sm:w-12 rounded-full overflow-hidden transition-all duration-200 ease-in-out hover:ring-2 hover:ring-role-student active:scale-95 focus:outline-none focus:ring-2 focus:ring-role-student focus:ring-offset-2 focus:ring-offset-background"
                         >
-                          <UserCircle className="h-6 sm:h-8 w-6 sm:w-8 text-role-student" />
+                          {profilePhotoUrl ? (
+                            <img
+                              src={profilePhotoUrl}
+                              alt="Profile"
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full bg-role-student/20 flex items-center justify-center">
+                              <UserCircle className="h-6 sm:h-8 w-6 sm:w-8 text-role-student" />
+                            </div>
+                          )}
                         </button>
                         
                         <div className="flex-1 min-w-0">
