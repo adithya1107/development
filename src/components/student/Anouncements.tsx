@@ -12,7 +12,10 @@ import {
   Users, 
   Send,
   Reply,
-  Eye
+  Eye,
+  Clock,
+  MapPin,
+  Calendar
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -24,13 +27,16 @@ interface CommunicationCenterProps {
 const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
   const [announcements, setAnnouncements] = useState([]);
   const [forums, setForums] = useState([]);
+  const [alumniEvents, setAlumniEvents] = useState([]);
   const [selectedForum, setSelectedForum] = useState<any>(null);
   const [forumPosts, setForumPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
-    fetchCommunicationData();
+    if (studentData) {
+      fetchCommunicationData();
+    }
   }, [studentData]);
 
   const fetchCommunicationData = async () => {
@@ -66,6 +72,23 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
         .order('created_at', { ascending: false });
 
       setForums(forumsData || []);
+
+      // Fetch Alumni Events
+      const { data: eventsData, error: eventsError } = await supabase
+        .from('events')
+        .select('*')
+        .eq('college_id', studentData.college_id)
+        .eq('is_active', true)
+        .order('start_date', { ascending: false });
+
+      console.log('Alumni Events Query:', { 
+        college_id: studentData.college_id, 
+        eventsData, 
+        eventsError,
+        count: eventsData?.length 
+      });
+
+      setAlumniEvents(eventsData || []);
 
     } catch (error) {
       console.error('Error fetching communication data:', error);
@@ -183,7 +206,7 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
 
       <Tabs defaultValue="announcements" className="space-y-4 w-full">
         <div className="w-full">
-          <TabsList className="grid w-full grid-cols-2 h-auto">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger value="announcements" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
               <Bell className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
               <span className="truncate">Announcements</span>
@@ -191,6 +214,10 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
             <TabsTrigger value="forums" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
               <MessageSquare className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
               <span className="truncate">Discussion Forums</span>
+            </TabsTrigger>
+            <TabsTrigger value="alumni-events" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
+              <Users className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 flex-shrink-0" />
+              <span className="truncate">Alumni Events</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -331,6 +358,100 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
             </div>
           )}
         </TabsContent>
+
+        <TabsContent value="alumni-events" className="space-y-4">
+          {alumniEvents.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-8">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500 text-sm sm:text-base">No alumni events right now</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4 sm:space-y-6">
+              {alumniEvents.map((event: any) => (
+                <Card key={event.id} className="hover:shadow-md transition-shadow w-full">
+                  <CardContent className="p-4 sm:p-6">
+                    {/* Header Section */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-3 mb-3">
+                      <div className="flex-1 w-full">
+                        <h3 className="text-base sm:text-lg font-semibold mb-2 break-words">
+                          {event.event_name}
+                        </h3>
+                        {event.description && (
+                          <p className="text-gray-700 text-sm sm:text-base leading-relaxed break-words mb-3">
+                            {event.description}
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* Event Type Badge */}
+                      {event.event_type && (
+                        <Badge variant="secondary" className="text-xs sm:text-sm px-2 sm:px-3 py-0.5 capitalize">
+                          {event.event_type}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Event Details */}
+                    <div className="space-y-2 mb-4">
+                      {/* Date & Time */}
+                      <div className="flex items-center text-sm text-gray-600">
+                        <Clock className="h-4 w-4 mr-2 flex-shrink-0" />
+                        <span className="break-words">
+                          {new Date(event.start_date).toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                          {event.end_date && event.end_date !== event.start_date && (
+                            <> - {new Date(event.end_date).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}</>
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Location */}
+                      {event.location && (
+                        <div className="flex items-center text-sm text-gray-600">
+                          <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
+                          <span className="break-words">{event.location}</span>
+                        </div>
+                      )}
+
+                      {/* Max Participants */}
+                      {event.max_participants && (
+                        <div className="flex items-center text-sm text-gray-600">
+                          <Users className="h-4 w-4 mr-2 flex-shrink-0" />
+                          <span>Max Participants: {event.max_participants}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-3 border-t gap-2">
+                      <span className="text-xs text-gray-500">
+                        {event.registration_required && 'Registration Required'}
+                      </span>
+                      <Button size="sm" className="w-full sm:w-auto">
+                        <Calendar className="h-4 w-4 mr-1" />
+                        View Details
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
       </Tabs>
     </div>
   );
