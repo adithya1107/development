@@ -7,22 +7,35 @@ import { User, BookOpen, Calendar, DollarSign, Award, AlertCircle } from 'lucide
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from "@/components/ui/use-toast";
 import PermissionWrapper from '@/components/PermissionWrapper';
-
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+dayjs.extend(relativeTime);
 interface ParentDashboardProps {
   user: any;
   onNavigate?: (tab: string) => void;
 }
-
+interface ParentActivity {
+  activity_type: string;
+  reference_id: uuid;
+  source_table: string;
+  activity_time: timestamptz;
+  student_id: uuid;
+  student_name: string;
+  title: string;
+  description: string;
+  metadata: any;
+}
 const ParentDashboard = ({ user, onNavigate }: ParentDashboardProps) => {
   const [children, setChildren] = useState<any[]>([]);
   const [selectedChild, setSelectedChild] = useState<string>('');
   const [childStats, setChildStats] = useState<any>({});
   const [pendingFees, setPendingFees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
+  const [activities, setActivities] = useState<ParentActivity[]>([]);
   useEffect(() => {
     if (user?.id || user?.user_id) {
       fetchChildren();
+      loadRecentActivities();
     }
   }, [user?.id, user?.user_id]);
 
@@ -157,29 +170,51 @@ const ParentDashboard = ({ user, onNavigate }: ParentDashboardProps) => {
     }
   };
 
-  const recentActivities = [
-    {
-      title: 'Grade Updated',
-      description: 'Computer Networks - A Grade received',
-      time: '1 day ago',
-      child: 'Alex Johnson',
-      permission: 'view_child_grades' as const
-    },
-    {
-      title: 'Fee Payment Due',
-      description: 'Semester Fee - Due in 5 days',
-      time: '2 days ago',
-      child: 'Alex Johnson',
-      permission: 'view_child_fees' as const
-    },
-    {
-      title: 'Attendance Alert',
-      description: 'Missed Database Management class',
-      time: '3 days ago',
-      child: 'Alex Johnson',
-      permission: 'view_child_attendance' as const
+  const loadRecentActivities = async () => {
+    try {
+      if (!user?.id || !user?.user_id) return;
+
+      const { data, error } = await supabase.rpc(
+        'get_parent_activities',
+        {
+          p_parent_id: user.user_id,
+          p_limit: 15,
+        }
+      );
+
+      if (error) {
+        console.error('Error fetching activities:', error);
+        return;
+      }
+
+      setActivities(data || []);
+    } catch (err) {
+      console.error('Failed to load activities:', err);
     }
-  ];
+  };
+  // const recentActivities = [
+  //   {
+  //     title: 'Grade Updated',
+  //     description: 'Computer Networks - A Grade received',
+  //     time: '1 day ago',
+  //     child: 'Alex Johnson',
+  //     permission: 'view_child_grades' as const
+  //   },
+  //   {
+  //     title: 'Fee Payment Due',
+  //     description: 'Semester Fee - Due in 5 days',
+  //     time: '2 days ago',
+  //     child: 'Alex Johnson',
+  //     permission: 'view_child_fees' as const
+  //   },
+  //   {
+  //     title: 'Attendance Alert',
+  //     description: 'Missed Database Management class',
+  //     time: '3 days ago',
+  //     child: 'Alex Johnson',
+  //     permission: 'view_child_attendance' as const
+  //   }
+  // ];
 
   const quickActions = [
     {
@@ -329,8 +364,13 @@ const ParentDashboard = ({ user, onNavigate }: ParentDashboardProps) => {
             <CardDescription className="text-sm">Your latest academic activities</CardDescription>
           </CardHeader>
           <CardContent className="h-[calc(100%-100px)] overflow-y-auto overflow-x-hidden scrollbar-thin space-y-3 sm:space-y-4 p-4 sm:p-6">
-            {recentActivities.map((activity, index) => (
-              <PermissionWrapper key={index} permission={activity.permission}>
+            {activities.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center">
+                No recent activity found
+              </p>
+            )}
+            {activities.map((activity) => (
+              <div key={activity.reference_id}>
                 <div className="flex flex-row items-start justify-start space-x-2 p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 transition-all duration-300 hover:shadow-md hover:shadow-gray-500/10 will-change-transform">
                   <div className="flex-shrink-0 mt-2 sm:mt-2.5">
                     <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse shadow-lg shadow-gray-400/50"></div>
@@ -338,10 +378,10 @@ const ParentDashboard = ({ user, onNavigate }: ParentDashboardProps) => {
                   <div className="flex flex-col justify-center flex-1 min-w-0">
                     <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{activity.title}</p>
                     <p className="text-xs sm:text-sm text-muted-foreground leading-snug line-clamp-2">{activity.description}</p>
-                    <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{activity.time}</p>
+                    <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{dayjs(activity.activity_time).fromNow()}</p>
                   </div>
                 </div>
-              </PermissionWrapper>
+              </div>
             ))}
           </CardContent>
         </Card>
