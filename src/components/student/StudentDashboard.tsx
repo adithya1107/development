@@ -5,12 +5,22 @@ import { Button } from '@/components/ui/button';
 import { BookOpen, Calendar, Award, Home, Users, Bell } from 'lucide-react';
 import PermissionWrapper from '@/components/PermissionWrapper';
 import { supabase } from '@/integrations/supabase/client';
-
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+dayjs.extend(relativeTime);
 interface StudentDashboardProps {
   studentData: any;
   onNavigate?: (tab: string) => void;
 }
-
+interface StudentActivity {
+  activity_id: string;
+  activity_type: string;
+  title: string;
+  description: string;
+  activity_time: Date;
+  icon: string;
+  metadata: any;
+}
 const StudentDashboard = ({ studentData, onNavigate }: StudentDashboardProps) => {
   const [stats, setStats] = useState({
     enrolledCourses: 0,
@@ -20,49 +30,51 @@ const StudentDashboard = ({ studentData, onNavigate }: StudentDashboardProps) =>
   });
   const [courses, setCourses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
+  const [activities, setActivities] = useState<StudentActivity[]>([]);
   // Dummy recent activities data
-  const recentActivities = [
-    {
-      title: 'Assignment Submitted',
-      description: 'Data Structures & Algorithms - Binary Tree Implementation',
-      time: '2 hours ago',
-      type: 'assignment',
-      permission: 'view_submit_assignments' as const
-    },
-    {
-      title: 'Grade Updated',
-      description: 'Database Management Systems - A Grade',
-      time: '1 day ago',
-      type: 'grade',
-      permission: 'view_grades' as const
-    },
-    {
-      title: 'Attendance Marked',
-      description: 'Computer Networks - Present',
-      time: '2 days ago',
-      type: 'attendance',
-      permission: 'view_attendance' as const
-    },
-    {
-      title: 'Assignment Submitted',
-      description: 'Web Development - React Project',
-      time: '3 days ago',
-      type: 'assignment',
-      permission: 'view_submit_assignments' as const
-    }
-  ];
+  // const recentActivities = [
+  //   {
+  //     title: 'Assignment Submitted',
+  //     description: 'Data Structures & Algorithms - Binary Tree Implementation',
+  //     time: '2 hours ago',
+  //     type: 'assignment',
+  //     permission: 'view_submit_assignments' as const
+  //   },
+  //   {
+  //     title: 'Grade Updated',
+  //     description: 'Database Management Systems - A Grade',
+  //     time: '1 day ago',
+  //     type: 'grade',
+  //     permission: 'view_grades' as const
+  //   },
+  //   {
+  //     title: 'Attendance Marked',
+  //     description: 'Computer Networks - Present',
+  //     time: '2 days ago',
+  //     type: 'attendance',
+  //     permission: 'view_attendance' as const
+  //   },
+  //   {
+  //     title: 'Assignment Submitted',
+  //     description: 'Web Development - React Project',
+  //     time: '3 days ago',
+  //     type: 'assignment',
+  //     permission: 'view_submit_assignments' as const
+  //   }
+  // ];
 
   useEffect(() => {
     if (studentData?.user_id) {
       fetchDashboardData();
+      loadRecentActivities();
+      console.log(activities);
     }
   }, [studentData?.user_id]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch enrolled courses
       const { data: enrollments, error: enrollmentsError } = await supabase
         .from('enrollments')
@@ -102,7 +114,7 @@ const StudentDashboard = ({ studentData, onNavigate }: StudentDashboardProps) =>
 
       // Filter assignments for enrolled courses
       const enrolledCourseIds = enrollments?.map(e => e.course_id) || [];
-      const upcomingAssignments = assignments?.filter(a => 
+      const upcomingAssignments = assignments?.filter(a =>
         enrolledCourseIds.includes(a.course_id)
       ) || [];
 
@@ -155,7 +167,7 @@ const StudentDashboard = ({ studentData, onNavigate }: StudentDashboardProps) =>
             id: enrollment.course?.id,
             name: enrollment.course?.course_name || 'Unknown Course',
             code: enrollment.course?.course_code || 'N/A',
-            instructor: enrollment.course?.instructor 
+            instructor: enrollment.course?.instructor
               ? `${enrollment.course.instructor.first_name} ${enrollment.course.instructor.last_name}`
               : 'TBA',
             progress: Math.round(avgProgress)
@@ -280,6 +292,31 @@ const StudentDashboard = ({ studentData, onNavigate }: StudentDashboardProps) =>
     }
   };
 
+
+  const loadRecentActivities = async () => {
+    try {
+      if (!studentData?.user_id) return;
+
+      const { data, error } = await supabase.rpc(
+        'get_student_activities',
+        {
+          p_student_id: studentData.user_id,
+          p_limit: 15,
+        }
+      );
+
+      if (error) {
+        console.error('Error fetching activities:', error);
+        return;
+      }
+
+      setActivities(data || []);
+    } catch (err) {
+      console.error('Failed to load activities:', err);
+    }
+  };
+
+
   if (!studentData?.user_id) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -348,20 +385,29 @@ const StudentDashboard = ({ studentData, onNavigate }: StudentDashboardProps) =>
             <CardDescription className="text-sm">Your latest academic activities</CardDescription>
           </CardHeader>
           <CardContent className="h-[calc(100%-100px)] custom-scrollbar overflow-x-hidden space-y-3 sm:space-y-4 p-4 sm:p-6">
-            {recentActivities.map((activity, index) => (
-              <PermissionWrapper key={index} permission={activity.permission}>
+            {activities.map((activity) => (
+              <div key={activity.activity_id}>
                 <div className="flex flex-row items-start justify-start space-x-2 p-3 rounded-lg bg-white/5 border border-white/5 hover:bg-white/10 hover:border-white/10 transition-all duration-300 hover:shadow-sm hover:shadow-green-500/5 will-change-transform">
                   <div className="flex-shrink-0 mt-2 sm:mt-2.5">
                     <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-400/50"></div>
                   </div>
                   <div className="flex flex-col justify-center flex-1 min-w-0">
-                    <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{activity.title}</p>
-                    <p className="text-xs sm:text-sm text-muted-foreground leading-snug line-clamp-2">{activity.description}</p>
-                    <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{activity.time}</p>
+                    <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{activity.activity_type.toUpperCase()}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground leading-snug line-clamp-2">{activity.title}</p>
+
+                    <p className="text-xs sm:text-sm text-muted-foreground leading-snug line-clamp-2">
+                    {activity.description}
+                    </p>
+                    <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{dayjs(activity.activity_time).fromNow()}</p>
                   </div>
                 </div>
-              </PermissionWrapper>
+              </div>
             ))}
+            {activities.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center">
+                No recent activity found
+              </p>
+            )}
           </CardContent>
         </Card>
 
