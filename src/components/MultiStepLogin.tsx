@@ -27,8 +27,6 @@ const MultiStepLogin = () => {
   const [collegeData, setCollegeData] = useState<CollegeData | null>(null);
   const [userEmail, setUserEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
-  const [user, setUser] = useState<User | null>(null);
   const [isSignUp, setIsSignUp] = useState(false);
   
   // Signup form data
@@ -44,20 +42,16 @@ const MultiStepLogin = () => {
 
   // Set up auth state listener
   useEffect(() => {
-    // Check for existing session first
+    let mounted = true;
+
+    // Check for existing session
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       
-      if (session) {
-        // User is already logged in, handle redirect
-        setSession(session);
-        setUser(session.user);
+      if (session && mounted) {
+        // User is already logged in, redirect them
+        console.log('Existing session found, redirecting...');
         await handleAuthenticatedUser(session.user);
-      } else {
-        // No session, ensure we're on step 1
-        setSession(null);
-        setUser(null);
-        setStep(1);
       }
     };
 
@@ -66,23 +60,27 @@ const MultiStepLogin = () => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+        if (!mounted) return;
         
-        // If user is authenticated, fetch their profile and redirect
+        console.log('Login page - Auth event:', event);
+        
+        // If user just signed in, handle redirect
         if (session?.user && event === 'SIGNED_IN') {
           await handleAuthenticatedUser(session.user);
         }
         
-        // If user signed out, reset to step 1
+        // If user signed out, reset form and stay on login page
         if (event === 'SIGNED_OUT') {
-          setStep(1);
+          console.log('User signed out, resetting form');
           resetForm();
         }
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleAuthenticatedUser = async (user: User) => {
@@ -104,7 +102,7 @@ const MultiStepLogin = () => {
         return;
       }
 
-      // Store user data in sessionStorage (will clear on tab close)
+      // Store user data in sessionStorage
       const userData = {
         user_id: profile.id,
         user_type: profile.user_type,
@@ -117,7 +115,21 @@ const MultiStepLogin = () => {
 
       sessionStorage.setItem('colcord_user', JSON.stringify(userData));
 
-      // Redirect based on user type
+      // Check onboarding status
+      const { data: onboarding } = await supabase
+        .from('user_onboarding')
+        .select('password_reset_required')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      // If password reset is required, go to first-login
+      if (onboarding?.password_reset_required) {
+        console.log('Password reset required, redirecting to first-login');
+        navigate('/first-login', { replace: true });
+        return;
+      }
+
+      // Otherwise, redirect to appropriate dashboard
       const userRoutes = {
         'student': '/student',
         'faculty': '/teacher',
@@ -128,9 +140,15 @@ const MultiStepLogin = () => {
       };
 
       const route = userRoutes[profile.user_type as keyof typeof userRoutes] || '/student';
-      navigate(route);
+      console.log('Redirecting to:', route);
+      navigate(route, { replace: true });
     } catch (error) {
       console.error('Error handling authenticated user:', error);
+      toast({
+        title: 'Error',
+        description: 'An error occurred during login. Please try again.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -230,59 +248,35 @@ const MultiStepLogin = () => {
       return;
     }
 
-    if (!userEmail) {
-      toast({
-        title: 'Error',
-        description: 'User email not found. Please start over.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     setIsLoading(true);
 
     try {
-      // Use Supabase auth with email and password
+      // Sign in with email and password
       const { data, error } = await supabase.auth.signInWithPassword({
         email: userEmail,
-        password: password
+        password: password,
       });
 
       if (error) {
         console.error('Login error:', error);
-        
-        // Handle specific auth errors
-        if (error.message.includes('Invalid login credentials')) {
-          toast({
-            title: 'Login Failed',
-            description: 'Invalid password. Please check your credentials.',
-            variant: 'destructive',
-          });
-        } else if (error.message.includes('Email not confirmed')) {
-          toast({
-            title: 'Email Not Confirmed',
-            description: 'Please check your email and confirm your account.',
-            variant: 'destructive',
-          });
-        } else {
-          toast({
-            title: 'Login Error',
-            description: error.message || 'An error occurred during login.',
-            variant: 'destructive',
-          });
-        }
+        toast({
+          title: 'Login Failed',
+          description: error.message || 'Invalid credentials. Please try again.',
+          variant: 'destructive',
+        });
         return;
       }
 
       if (data.user) {
+        console.log('Login successful');
+        // handleAuthenticatedUser will be called by the auth state change listener
         toast({
           title: 'Login Successful',
-          description: 'Welcome back! Redirecting to your dashboard...',
+          description: 'Welcome back!',
         });
-        // Auth state change will handle the redirect
       }
     } catch (error) {
-      console.error('Unexpected login error:', error);
+      console.error('Login error:', error);
       toast({
         title: 'Login Error',
         description: 'An unexpected error occurred. Please try again.',
@@ -293,11 +287,11 @@ const MultiStepLogin = () => {
     }
   };
 
-  const handleSignupSubmit = async () => {
-    // Validation
+  const handleSignup = async () => {
+    // Validate all fields
     if (!signupData.firstName || !signupData.lastName || !signupData.email) {
       toast({
-        title: 'Missing Information',
+        title: 'Required Fields',
         description: 'Please fill in all required fields',
         variant: 'destructive',
       });
@@ -307,16 +301,7 @@ const MultiStepLogin = () => {
     if (!signupData.customUserCode) {
       toast({
         title: 'User Code Required',
-        description: 'Please enter your preferred user code',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (!signupData.generatePassword || signupData.generatePassword.length < 6) {
-      toast({
-        title: 'Password Too Short',
-        description: 'Password must be at least 6 characters long',
+        description: 'Please enter a user code',
         variant: 'destructive',
       });
       return;
@@ -331,10 +316,10 @@ const MultiStepLogin = () => {
       return;
     }
 
-    if (!collegeData) {
+    if (signupData.generatePassword.length < 6) {
       toast({
-        title: 'College Not Selected',
-        description: 'Please go back and select a college',
+        title: 'Weak Password',
+        description: 'Password must be at least 6 characters',
         variant: 'destructive',
       });
       return;
@@ -344,14 +329,14 @@ const MultiStepLogin = () => {
 
     try {
       // Check if user code already exists
-      const { data: existingUser, error: checkError } = await supabase.rpc('get_user_email', {
-        college_code: collegeData.code,
-        user_code: signupData.customUserCode
-      });
+      const { data: existingUser } = await supabase
+        .from('user_profiles')
+        .select('user_code')
+        .eq('user_code', signupData.customUserCode)
+        .eq('college_id', collegeData?.id)
+        .maybeSingle();
 
-      if (checkError) throw checkError;
-
-      if (existingUser && existingUser[0]?.user_exists) {
+      if (existingUser) {
         toast({
           title: 'User Code Taken',
           description: 'This user code is already in use. Please choose another.',
@@ -361,56 +346,62 @@ const MultiStepLogin = () => {
         return;
       }
 
-      // Create the user in Supabase Auth
+      // Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: signupData.email,
         password: signupData.generatePassword,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
           data: {
-            college_id: collegeData.id,
-            user_code: signupData.customUserCode,
-            user_type: signupData.userType,
             first_name: signupData.firstName,
-            last_name: signupData.lastName
+            last_name: signupData.lastName,
           }
         }
       });
 
-      if (authError) {
-        console.error('Signup auth error:', authError);
-        
-        if (authError.message.includes('User already registered')) {
-          toast({
-            title: 'Email Already Registered',
-            description: 'This email is already registered. Please use the login option.',
-            variant: 'destructive',
-          });
-        } else {
-          toast({
-            title: 'Signup Error',
-            description: authError.message || 'An error occurred during signup.',
-            variant: 'destructive',
-          });
-        }
-        return;
+      if (authError) throw authError;
+
+      if (!authData.user) {
+        throw new Error('Failed to create user account');
       }
 
-      if (authData.user) {
-        toast({
-          title: 'Signup Successful!',
-          description: 'Please check your email to confirm your account, then you can login.',
+      // Create user profile
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .insert({
+          id: authData.user.id,
+          first_name: signupData.firstName,
+          last_name: signupData.lastName,
+          email: signupData.email,
+          user_type: signupData.userType,
+          user_code: signupData.customUserCode,
+          college_id: collegeData?.id,
         });
-        
-        // Reset form and switch to login mode
-        setIsSignUp(false);
-        resetForm();
-      }
-    } catch (error) {
-      console.error('Unexpected signup error:', error);
+
+      if (profileError) throw profileError;
+
+      // Create onboarding record
+      const { error: onboardingError } = await supabase
+        .from('user_onboarding')
+        .insert({
+          user_id: authData.user.id,
+          password_reset_required: false,
+          first_login_completed: true,
+          onboarding_completed: true,
+        });
+
+      if (onboardingError) throw onboardingError;
+
       toast({
-        title: 'Signup Error',
-        description: 'An unexpected error occurred. Please try again.',
+        title: 'Account Created',
+        description: 'Your account has been created successfully!',
+      });
+
+      // The auth state listener will handle the redirect
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      toast({
+        title: 'Signup Failed',
+        description: error.message || 'Failed to create account. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -478,7 +469,7 @@ const MultiStepLogin = () => {
       {/* Background Grid Pattern */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
       
-      <div className="elative z-10 w-full max-w-md mx-auto px-4 sm:px-6 md:px-0">
+      <div className="relative z-10 w-full max-w-md mx-auto px-4 sm:px-6 md:px-0">
         {/* Hero Section - Compact for mobile */}
         <div className="text-center mb-4 sm:mb-6 animate-fade-in-up">
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-2 sm:mb-3 break-words px-2">
@@ -580,6 +571,13 @@ const MultiStepLogin = () => {
                     </div>
                   ) : 'Continue'}
                 </Button>
+                <Button 
+                  onClick={() => setStep(1)} 
+                  variant="ghost"
+                  className="w-full text-sm sm:text-base"
+                >
+                  Back
+                </Button>
               </div>
             )}
 
@@ -611,6 +609,13 @@ const MultiStepLogin = () => {
                       <span>Logging in...</span>
                     </div>
                   ) : 'Access Portal'}
+                </Button>
+                <Button 
+                  onClick={() => setStep(2)} 
+                  variant="ghost"
+                  className="w-full text-sm sm:text-base"
+                >
+                  Back
                 </Button>
               </div>
             )}

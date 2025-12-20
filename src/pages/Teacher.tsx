@@ -340,8 +340,8 @@ const Teacher = () => {
         return <TeacherParentInteraction teacherData={teacherData} />;
       case 'absence':
         return <TeacherCalendarAttendance teacherData={teacherData} />;
-      // case 'documents':
-      //   return <TeacherDocuments teacherData={teacherData} />;
+      case 'documents':
+        return <TeacherDocuments teacherData={teacherData} />;
       case 'recognition':
         return <TeacherRecognition teacherData={teacherData} />;
       case 'department':
