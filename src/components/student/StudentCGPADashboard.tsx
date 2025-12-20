@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Trophy, TrendingUp, Award, BookOpen, Calculator, Target, GraduationCap, BarChart3 } from "lucide-react";
+import { Trophy, TrendingUp, Award, BookOpen, Calculator, Target, GraduationCap, BarChart3, Users, Medal, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const StudentCGPADashboard = () => {
@@ -9,6 +9,8 @@ const StudentCGPADashboard = () => {
   const [currentCGPA, setCurrentCGPA] = useState(0);
   const [totalCredits, setTotalCredits] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [comparativeStats, setComparativeStats] = useState(null);
+  const [courseComparisons, setCourseComparisons] = useState([]);
 
   useEffect(() => {
     fetchStudentData();
@@ -44,7 +46,10 @@ const StudentCGPADashboard = () => {
           courses (
             course_name,
             course_code,
-            credits
+            credits,
+            mean_marks,
+            standard_deviation,
+            number_of_students
           )
         `)
         .eq("student_id", user.user.id)
@@ -54,11 +59,122 @@ const StudentCGPADashboard = () => {
 
       setCourseGrades(grades || []);
 
+      // Fetch comparative statistics
+      await fetchComparativeStats(user.user.id, records);
+      await fetchCourseComparisons(user.user.id, grades);
+
     } catch (error) {
       console.error('Error fetching student data:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchComparativeStats = async (studentId, records) => {
+    if (!records || records.length === 0) return;
+
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("college_id")
+        .eq("id", user.user.id)
+        .single();
+
+      if (!profile) return;
+
+      // Get all students' CGPAs from the same college and latest semester
+      const latestRecord = records[0];
+      const { data: allRecords } = await supabase
+        .from("student_academic_records")
+        .select("student_id, cgpa")
+        .eq("academic_year", latestRecord.academic_year)
+        .eq("semester", latestRecord.semester)
+        .not("cgpa", "is", null);
+
+      if (!allRecords || allRecords.length === 0) return;
+
+      const cgpas = allRecords.map(r => r.cgpa).sort((a, b) => b - a);
+      const studentCGPA = latestRecord.cgpa;
+      const totalStudents = cgpas.length;
+      const rank = cgpas.findIndex(c => c === studentCGPA) + 1;
+      const percentile = ((totalStudents - rank + 1) / totalStudents) * 100;
+
+      // Calculate statistics
+      const sum = cgpas.reduce((a, b) => a + b, 0);
+      const mean = sum / totalStudents;
+      const variance = cgpas.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / totalStudents;
+      const stdDev = Math.sqrt(variance);
+
+      // Calculate z-score
+      const zScore = stdDev !== 0 ? (studentCGPA - mean) / stdDev : 0;
+
+      setComparativeStats({
+        rank,
+        totalStudents,
+        percentile,
+        classMean: mean,
+        classMedian: cgpas[Math.floor(totalStudents / 2)],
+        stdDev,
+        zScore,
+        topPercentage: (rank / totalStudents) * 100,
+        studentsAbove: rank - 1,
+        studentsBelow: totalStudents - rank
+      });
+    } catch (error) {
+      console.error('Error fetching comparative stats:', error);
+    }
+  };
+
+  const fetchCourseComparisons = async (studentId, grades) => {
+    if (!grades || grades.length === 0) return;
+
+    const comparisons = grades.map(grade => {
+      const course = grade.courses;
+      if (!course || !course.mean_marks || !course.standard_deviation) {
+        return null;
+      }
+
+      const studentPercentage = grade.percentage;
+      const classMean = course.mean_marks;
+      const stdDev = course.standard_deviation;
+      
+      // Calculate z-score
+      const zScore = stdDev !== 0 ? (studentPercentage - classMean) / stdDev : 0;
+      
+      // Determine performance level
+      let performanceLevel;
+      let performanceColor;
+      if (zScore >= 2) {
+        performanceLevel = "Exceptional";
+        performanceColor = "text-purple-500";
+      } else if (zScore >= 1) {
+        performanceLevel = "Above Average";
+        performanceColor = "text-green-500";
+      } else if (zScore >= -0.5) {
+        performanceLevel = "Average";
+        performanceColor = "text-blue-500";
+      } else if (zScore >= -1.5) {
+        performanceLevel = "Below Average";
+        performanceColor = "text-yellow-500";
+      } else {
+        performanceLevel = "Needs Improvement";
+        performanceColor = "text-red-500";
+      }
+
+      return {
+        ...grade,
+        classMean,
+        stdDev,
+        zScore,
+        performanceLevel,
+        performanceColor,
+        deviationFromMean: studentPercentage - classMean,
+        totalStudents: course.number_of_students || 0
+      };
+    }).filter(Boolean);
+
+    setCourseComparisons(comparisons);
   };
 
   const getGradeColor = (gradePoint) => {
@@ -75,6 +191,12 @@ const StudentCGPADashboard = () => {
     if (cgpa >= 7) return { text: 'Very Good', color: 'bg-yellow-500' };
     if (cgpa >= 6) return { text: 'Good', color: 'bg-orange-500' };
     return { text: 'Pass', color: 'bg-red-500' };
+  };
+
+  const getPerformanceIcon = (deviation) => {
+    if (deviation > 5) return <ArrowUp className="w-4 h-4 text-green-500" />;
+    if (deviation < -5) return <ArrowDown className="w-4 h-4 text-red-500" />;
+    return <Minus className="w-4 h-4 text-gray-500" />;
   };
 
   const groupBySemester = () => {
@@ -159,6 +281,182 @@ const StudentCGPADashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Comparative Analytics */}
+      {comparativeStats && (
+        <Card className="glass-effect border-primary/20 bg-gradient-to-br from-accent/5 to-primary/5">
+          <CardHeader className="border-b border-primary/20">
+            <CardTitle className="flex items-center gap-2 text-primary">
+              <Users className="w-5 h-5" />
+              Your Performance vs Peers
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {/* Rank */}
+              <div className="text-center p-4 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 rounded-lg border border-yellow-500/20">
+                <Medal className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
+                <p className="text-3xl font-bold text-yellow-600">#{comparativeStats.rank}</p>
+                <p className="text-sm text-muted-foreground">Class Rank</p>
+                <p className="text-xs text-accent mt-1">
+                  out of {comparativeStats.totalStudents} students
+                </p>
+              </div>
+
+              {/* Percentile */}
+              <div className="text-center p-4 bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-lg border border-green-500/20">
+                <Trophy className="w-8 h-8 text-green-500 mx-auto mb-2" />
+                <p className="text-3xl font-bold text-green-600">
+                  {comparativeStats.percentile.toFixed(1)}%
+                </p>
+                <p className="text-sm text-muted-foreground">Percentile</p>
+                <p className="text-xs text-accent mt-1">
+                  Top {comparativeStats.topPercentage.toFixed(1)}%
+                </p>
+              </div>
+
+              {/* Class Average */}
+              <div className="text-center p-4 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-lg border border-blue-500/20">
+                <BarChart3 className="w-8 h-8 text-blue-500 mx-auto mb-2" />
+                <p className="text-3xl font-bold text-blue-600">
+                  {comparativeStats.classMean.toFixed(2)}
+                </p>
+                <p className="text-sm text-muted-foreground">Class Average</p>
+                <p className="text-xs text-accent mt-1">
+                  You: {currentCGPA > comparativeStats.classMean ? '+' : ''}{(currentCGPA - comparativeStats.classMean).toFixed(2)}
+                </p>
+              </div>
+
+              {/* Z-Score */}
+              <div className="text-center p-4 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg border border-purple-500/20">
+                <Calculator className="w-8 h-8 text-purple-500 mx-auto mb-2" />
+                <p className="text-3xl font-bold text-purple-600">
+                  {comparativeStats.zScore.toFixed(2)}σ
+                </p>
+                <p className="text-sm text-muted-foreground">Standard Score</p>
+                <p className="text-xs text-accent mt-1">
+                  {comparativeStats.zScore > 0 ? 'Above' : 'Below'} mean
+                </p>
+              </div>
+            </div>
+
+            {/* Performance Breakdown */}
+            <div className="mt-6 p-4 bg-accent/5 rounded-lg border border-accent/20">
+              <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-accent" />
+                Statistical Breakdown
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Students Above</p>
+                  <p className="font-bold text-foreground">{comparativeStats.studentsAbove}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Students Below</p>
+                  <p className="font-bold text-foreground">{comparativeStats.studentsBelow}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Class Median</p>
+                  <p className="font-bold text-foreground">{comparativeStats.classMedian.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Std Deviation</p>
+                  <p className="font-bold text-foreground">{comparativeStats.stdDev.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Course-wise Performance Comparison */}
+      {courseComparisons.length > 0 && (
+        <Card className="glass-effect border-primary/20">
+          <CardHeader className="border-b border-primary/20">
+            <CardTitle className="flex items-center gap-2 text-primary">
+              <Award className="w-5 h-5" />
+              Course-wise Performance Analysis
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-6">
+            <div className="space-y-4">
+              {courseComparisons.map((course, idx) => (
+                <Card key={idx} className="glass-effect border-l-4 border-l-accent">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-foreground flex items-center gap-2">
+                          {course.courses.course_name}
+                          {getPerformanceIcon(course.deviationFromMean)}
+                        </h4>
+                        <p className="text-sm text-muted-foreground">
+                          {course.courses.course_code} • {course.totalStudents} students
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-xl font-bold ${course.performanceColor}`}>
+                          {course.performanceLevel}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Z-Score: {course.zScore.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-4 mt-4">
+                      <div className="text-center p-3 bg-accent/5 rounded border border-primary/10">
+                        <p className="text-xs text-muted-foreground mb-1">Your Score</p>
+                        <p className={`text-2xl font-bold ${getGradeColor(course.grade_point)}`}>
+                          {course.percentage.toFixed(1)}%
+                        </p>
+                      </div>
+                      <div className="text-center p-3 bg-accent/5 rounded border border-primary/10">
+                        <p className="text-xs text-muted-foreground mb-1">Class Avg</p>
+                        <p className="text-2xl font-bold text-blue-500">
+                          {course.classMean.toFixed(1)}%
+                        </p>
+                      </div>
+                      <div className="text-center p-3 bg-accent/5 rounded border border-primary/10">
+                        <p className="text-xs text-muted-foreground mb-1">Difference</p>
+                        <p className={`text-2xl font-bold ${course.deviationFromMean > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                          {course.deviationFromMean > 0 ? '+' : ''}{course.deviationFromMean.toFixed(1)}%
+                        </p>
+                      </div>
+                      <div className="text-center p-3 bg-accent/5 rounded border border-primary/10">
+                        <p className="text-xs text-muted-foreground mb-1">Grade</p>
+                        <p className={`text-2xl font-bold ${getGradeColor(course.grade_point)}`}>
+                          {course.grade_letter}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Visual distribution indicator */}
+                    <div className="mt-4 p-3 bg-gradient-to-r from-red-500/10 via-yellow-500/10 via-green-500/10 to-blue-500/10 rounded relative h-12">
+                      <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-between px-2 text-xs text-muted-foreground">
+                        <span>Below Avg</span>
+                        <span>Average</span>
+                        <span>Above Avg</span>
+                      </div>
+                      {/* Student position marker */}
+                      <div 
+                        className="absolute top-1 h-10 w-1 bg-primary rounded-full"
+                        style={{ 
+                          left: `${Math.max(0, Math.min(100, 50 + (course.zScore * 15)))}%`,
+                          transform: 'translateX(-50%)'
+                        }}
+                      >
+                        <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 whitespace-nowrap text-xs font-bold text-primary">
+                          You
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Semester-wise Performance */}
       <Card className="glass-effect border-primary/20">

@@ -1,198 +1,143 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Session } from '@supabase/supabase-js';
 
 interface NavigationWrapperProps {
   children: React.ReactNode;
 }
 
-// Define user type to route mapping
 const USER_ROUTE_MAP = {
   'student': '/student',
   'faculty': '/teacher',
   'admin': '/admin',
-  'super_admin': '/admin',
   'parent': '/parent',
   'alumni': '/alumni'
 } as const;
 
 const NavigationWrapper = ({ children }: NavigationWrapperProps) => {
-  const location = useLocation();
   const navigate = useNavigate();
-  const [isChecking, setIsChecking] = useState(true);
-  const processingRef = useRef(false);
-  const hasInitializedRef = useRef(false);
-  const currentSessionIdRef = useRef<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Only run once on mount
-    if (hasInitializedRef.current) {
-      return;
-    }
-    
-    hasInitializedRef.current = true;
     let mounted = true;
 
-    // Check initial session
-    const initAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
+    const handleSession = async (session: any) => {
+      if (!mounted) return;
+
+      // No session - redirect to login if needed
+      if (!session) {
+        sessionStorage.removeItem('colcord_user');
+        localStorage.removeItem('colcord_user');
         
-        if (!mounted) return;
-        
-        if (session?.user) {
-          currentSessionIdRef.current = session.user.id;
-          await handleAuthentication(session, true);
-        } else {
-          // No session, clear storage
-          sessionStorage.removeItem('colcord_user');
-          localStorage.removeItem('colcord_user');
-          if (location.pathname !== '/') {
-            navigate('/', { replace: true });
-          }
-          setIsChecking(false);
+        if (window.location.pathname !== '/') {
+          navigate('/', { replace: true });
         }
-      } catch (error) {
-        console.error('Error initializing auth:', error);
-        setIsChecking(false);
+        setIsLoading(false);
+        return;
+      }
+
+      // Has session - get profile
+      try {
+        const { data: profile, error } = await supabase
+          .from('user_profiles')
+          .select('user_type, id, first_name, last_name, email, college_id, user_code')
+          .eq('id', session.user.id)
+          .single();
+
+        if (error || !profile) {
+          console.error('Profile fetch error:', error);
+          await supabase.auth.signOut();
+          return;
+        }
+
+        // Save to session
+        sessionStorage.setItem('colcord_user', JSON.stringify({
+          user_id: profile.id,
+          user_type: profile.user_type,
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          college_id: profile.college_id,
+          user_code: profile.user_code,
+          email: profile.email
+        }));
+
+        // Check if password reset needed
+        const { data: onboarding } = await supabase
+          .from('user_onboarding')
+          .select('password_reset_required')
+          .eq('user_id', session.user.id)
+          .single();
+
+        const targetRoute = USER_ROUTE_MAP[profile.user_type as keyof typeof USER_ROUTE_MAP];
+        const currentPath = window.location.pathname;
+
+        // Only redirect from login page
+        if (currentPath === '/') {
+          if (onboarding?.password_reset_required) {
+            navigate('/first-login', { replace: true });
+          } else if (targetRoute) {
+            navigate(targetRoute, { replace: true });
+          }
+        } else if (currentPath === '/first-login' && !onboarding?.password_reset_required && targetRoute) {
+          navigate(targetRoute, { replace: true });
+        }
+
+        setIsLoading(false);
+      } catch (err) {
+        console.error('Error:', err);
+        await supabase.auth.signOut();
       }
     };
 
-    initAuth();
+    // Initial check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleSession(session);
+    });
 
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return;
-        
-        console.log('Auth event:', event);
-        
-        if (event === 'SIGNED_OUT') {
-          sessionStorage.removeItem('colcord_user');
-          localStorage.removeItem('colcord_user');
-          processingRef.current = false;
-          currentSessionIdRef.current = null;
-          if (location.pathname !== '/') {
-            navigate('/', { replace: true });
-          }
-          return;
-        }
-        
-        // Only handle SIGNED_IN event for new sessions
-        if (event === 'SIGNED_IN' && session?.user) {
-          // Check if this is a new session
-          if (currentSessionIdRef.current !== session.user.id) {
-            currentSessionIdRef.current = session.user.id;
-            await handleAuthentication(session, false);
-          }
+    // Listen for changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth event:', event);
+      
+      if (event === 'SIGNED_OUT') {
+        sessionStorage.removeItem('colcord_user');
+        localStorage.removeItem('colcord_user');
+        navigate('/', { replace: true });
+        setIsLoading(false);
+      } else if (event === 'SIGNED_IN') {
+        handleSession(session);
+      } else if (event === 'TOKEN_REFRESHED') {
+        // Just update session data, don't redirect
+        if (session) {
+          supabase
+            .from('user_profiles')
+            .select('user_type, id, first_name, last_name, email, college_id, user_code')
+            .eq('id', session.user.id)
+            .single()
+            .then(({ data: profile }) => {
+              if (profile) {
+                sessionStorage.setItem('colcord_user', JSON.stringify({
+                  user_id: profile.id,
+                  user_type: profile.user_type,
+                  first_name: profile.first_name,
+                  last_name: profile.last_name,
+                  college_id: profile.college_id,
+                  user_code: profile.user_code,
+                  email: profile.email
+                }));
+              }
+            });
         }
       }
-    );
+    });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []); // Empty dependency array - only run once
+  }, []); // Empty deps - runs once
 
-  const handleAuthentication = async (session: Session, isInitialCheck: boolean) => {
-    // Prevent concurrent processing
-    if (processingRef.current) {
-      console.log('Already processing authentication, skipping...');
-      return;
-    }
-
-    processingRef.current = true;
-
-    try {
-      setIsChecking(true);
-      
-      const currentPath = location.pathname;
-      console.log('Processing authentication. Current path:', currentPath);
-
-      // Get user profile
-      const { data: profile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('user_type, id, first_name, last_name, email, college_id, user_code')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profileError || !profile) {
-        console.error('Error fetching user profile:', profileError);
-        sessionStorage.removeItem('colcord_user');
-        localStorage.removeItem('colcord_user');
-        await supabase.auth.signOut();
-        navigate('/', { replace: true });
-        return;
-      }
-
-      // Store user data consistently in sessionStorage only
-      const validUserData = {
-        user_id: profile.id,
-        user_type: profile.user_type,
-        first_name: profile.first_name,
-        last_name: profile.last_name,
-        college_id: profile.college_id,
-        user_code: profile.user_code,
-        email: profile.email
-      };
-      sessionStorage.setItem('colcord_user', JSON.stringify(validUserData));
-
-      // Check onboarding status
-      const { data: onboarding } = await supabase
-        .from('user_onboarding')
-        .select('password_reset_required, first_login_completed, onboarding_completed')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
-
-      const correctRoute = USER_ROUTE_MAP[profile.user_type as keyof typeof USER_ROUTE_MAP];
-      
-      if (!correctRoute) {
-        console.error('Invalid user type:', profile.user_type);
-        sessionStorage.removeItem('colcord_user');
-        await supabase.auth.signOut();
-        navigate('/', { replace: true });
-        return;
-      }
-
-      console.log('User type:', profile.user_type, 'Correct route:', correctRoute);
-
-      // Only redirect on initial check or from login page
-      if (isInitialCheck || currentPath === '/') {
-        let targetRoute: string | null = null;
-
-        // Priority 1: Password reset required
-        if (onboarding?.password_reset_required) {
-          targetRoute = '/first-login';
-          console.log('Redirecting to first-login (password reset required)');
-        } 
-        // Priority 2: Go to correct dashboard
-        else {
-          targetRoute = correctRoute;
-          console.log('Redirecting to dashboard:', correctRoute);
-        }
-
-        if (targetRoute) {
-          console.log('Navigating to:', targetRoute);
-          navigate(targetRoute, { replace: true });
-        }
-      }
-
-    } catch (error) {
-      console.error('Error handling authentication:', error);
-      sessionStorage.removeItem('colcord_user');
-      localStorage.removeItem('colcord_user');
-      await supabase.auth.signOut();
-      navigate('/', { replace: true });
-    } finally {
-      setIsChecking(false);
-      processingRef.current = false;
-    }
-  };
-
-  // Show loading state while checking auth (except on login page)
-  if (isChecking && location.pathname !== '/') {
+  // Show loader while checking auth (but not on login page)
+  if (isLoading && window.location.pathname !== '/') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">

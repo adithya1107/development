@@ -49,6 +49,8 @@ import MarketplaceApp from '@/components/student/Marketplace';
 import Anouncements from '@/components/student/Anouncements';
 import ClubActivityCenter from '@/components/student/ClubActivityCenter';
 import StudentProfile from '@/pages/student_profile.tsx';
+import Furlong from '@/components/student/Furlong';
+import StudentCGPADashboard from '@/components/student/StudentCGPADashboard';
 
 // NEW: Added TypeScript type for a single notification
 type Notification = {
@@ -389,8 +391,10 @@ const Student = () => {
     // { id: 'chatbot', label: 'Chatbot', icon: Bot },
     { id: 'quizzes', label: 'Quizzes', icon: Sparkle },
     { id: 'gradebook', label: 'Gradebook', icon: FileText },
+    { id: 'cgpa', label: 'CGPA', icon: TrendingUp },
     { id: 'events', label: 'Events', icon: Bell },
     { id: 'marketplace', label: 'Marketplace', icon: Award },
+    { id: 'furlong', label: 'Furlong', icon: Sun },
     // NEW: Conditionally add club activity center
     ...(hasClubAccess ? [{ id: 'clubs', label: 'Club Activities', icon: Users }] : []),
     { id: 'communication', label: 'Communication', icon: MessageSquare },
@@ -431,10 +435,14 @@ const Student = () => {
         return <QuizTaker />;
       case 'gradebook':
         return <StudentGrades />;
+      case 'cgpa':
+        return <StudentCGPADashboard studentData={studentData} />;
       case 'events':
         return <Events studentData={studentData} />;
       case 'marketplace':
         return <MarketplaceApp onNavigateToChat={handleNavigateToChat} />;
+      case 'furlong':
+        return <Furlong studentData={studentData} />;
       // NEW: Club activity center case
       case 'clubs':
         return hasClubAccess ? <ClubActivityCenter studentData={studentData} /> : <StudentDashboard studentData={studentData} onNavigate={setActiveView}/>;
