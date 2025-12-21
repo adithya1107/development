@@ -32,12 +32,19 @@ const ParentDashboard = ({ user, onNavigate }: ParentDashboardProps) => {
   const [pendingFees, setPendingFees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activities, setActivities] = useState<ParentActivity[]>([]);
+  
+  
   useEffect(() => {
-    if (user?.id || user?.user_id) {
-      fetchChildren();
-      loadRecentActivities();
-    }
-  }, [user?.id, user?.user_id]);
+    if (!user?.id && !user?.user_id) return;
+    fetchChildren();
+  }, [user]);
+
+  useEffect(() => {
+    if (children.length === 0) return;
+    loadRecentActivities().then(()=>{
+      console.log('success')
+    });
+  }, [children]);
 
   useEffect(() => {
     if (selectedChild) {
@@ -172,21 +179,23 @@ const ParentDashboard = ({ user, onNavigate }: ParentDashboardProps) => {
 
   const loadRecentActivities = async () => {
     try {
-      if (!user?.id || !user?.user_id) return;
+      if (!(user?.id || user?.user_id)){
+        return;
+      }
 
       const { data, error } = await supabase.rpc(
         'get_parent_activities',
         {
-          p_parent_id: user.user_id,
+          p_parent_id: user.user_id || user.id,
           p_limit: 15,
         }
       );
-
+      
       if (error) {
         console.error('Error fetching activities:', error);
         return;
       }
-
+     
       setActivities(data || []);
     } catch (err) {
       console.error('Failed to load activities:', err);
