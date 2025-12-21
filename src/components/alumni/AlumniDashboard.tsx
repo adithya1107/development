@@ -1,16 +1,37 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { GraduationCap, Heart, Calendar, Users, Award, MessageSquare } from 'lucide-react';
 import PermissionWrapper from '@/components/PermissionWrapper';
-
+import { supabase } from '@/integrations/supabase/client';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import { toTitleCase } from '@/lib/utils';
 interface AlumniDashboardProps {
   user: any;
   onNavigate?: (tab: string) => void; // Add navigation callback
 }
+export interface AlumniActivity {
+  activity_id: string;
+  activity_type: string;
+  activity_time: string; // ISO timestamptz
+  title: string;
+  description: string | null;
+  metadata: Record<string, any>;
+}
 
 const AlumniDashboard = ({ user, onNavigate }: AlumniDashboardProps) => {
+
+  const [activities, setActivities] = useState<AlumniActivity[]>([]);
+
+
+  useEffect(() => {
+    console.log(user);
+    loadRecentActivities();
+  }, [user.user_id, user.id])
+
+
   const alumniStats = [
     {
       title: 'Years Since Graduation',
@@ -134,6 +155,30 @@ const AlumniDashboard = ({ user, onNavigate }: AlumniDashboardProps) => {
     }
   };
 
+  const loadRecentActivities = async () => {
+    try {
+      if (!user?.user_id) return;
+
+      const { data, error } = await supabase.rpc(
+        'get_alumni_activities',
+        {
+          p_alumni_id: user.user_id,
+          p_limit: 15,
+        }
+      );
+
+      if (error) {
+        console.error('Error fetching activities:', error);
+        return;
+      }
+
+      setActivities(data || []);
+    } catch (err) {
+      console.error('Failed to load activities:', err);
+    }
+  };
+
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Welcome Section */}
@@ -162,8 +207,8 @@ const AlumniDashboard = ({ user, onNavigate }: AlumniDashboardProps) => {
               Alumni ID: {user.user_code} | Class of 2019 | Computer Science
             </p>
             <Badge className="bg-yellow-600/30 text-yellow-100 border border-yellow-300/40 font-bold px-4 py-1.5 w-fit hover:bg-yellow-600/40 hover:border-yellow-300/60 hover:cursor-pointer hover:shadow-[0_0_20px_rgba(250,204,21,0.4)] transition-all duration-300">
-                ALUMNI
-              </Badge>
+              ALUMNI
+            </Badge>
           </div>
         </div>
 
@@ -205,20 +250,26 @@ const AlumniDashboard = ({ user, onNavigate }: AlumniDashboardProps) => {
             <CardTitle className="text-card-foreground text-lg sm:text-xl font-bold">Recent Activities</CardTitle>
             <CardDescription className="text-sm">Your latest alumni activities</CardDescription>
           </CardHeader>
-          <CardContent className="h-[calc(100%-100px)] overflow-y-auto overflow-x-hidden scrollbar-thin space-y-3 sm:space-y-4 p-4 sm:p-6 ">
-            {recentActivities.map((activity, index) => (
-              <PermissionWrapper key={index} permission={activity.permission}>
+          <CardContent className="h-[calc(100%-100px)] overflow-y-auto overflow-x-hidden scrollbar-thin space-y-3 sm:space-y-4 p-4 sm:p-6 custom-scrollbar">
+            {activities.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center">
+                No recent activity found
+              </p>
+            )}
+            {activities.map((activity, index) => (
+              <div key={activity.activity_id}>
                 <div className="flex flex-row items-start justify-start space-x-2 p-3 rounded-lg border border-white/10 hover:border-yellow-400/40 cursor-pointer transition-all duration-300 hover:bg-white/10 hover:shadow-md hover:shadow-yellow-500/10 hover:-translate-y-0.5 will-change-transform">
                   <div className="flex-shrink-0 mt-1.5 sm:mt-2">
                     <div className="w-2 h-2 bg-yellow-400 rounded-full mt-0 animate-pulse shadow-lg shadow-yellow-400/50"></div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{activity.title}</p>
-                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{activity.description}</p>
-                    <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{activity.time}</p>
+                    <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{toTitleCase(activity.activity_type)}</p>
+                    <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{toTitleCase(activity.title)}</p>
+                    <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">{toTitleCase(activity.description)}</p>
+                    <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{dayjs(activity.activity_time).fromNow()}</p>
                   </div>
                 </div>
-              </PermissionWrapper>
+              </div>
             ))}
           </CardContent>
         </Card>

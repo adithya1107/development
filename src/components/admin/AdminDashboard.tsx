@@ -3,6 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+dayjs.extend(relativeTime);
 import {
   Users,
   Shield,
@@ -73,6 +76,16 @@ interface AdminDashboardProps {
   sessionData?: any;
 }
 
+interface ActivityItem {
+  activity_id: string;
+  activity_type: string;
+  title: string;
+  description: string;
+  activity_time: string;
+  icon: string;
+  metadata: any;
+}
+
 const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
   const navigate = useNavigate();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -80,6 +93,7 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [collegeName, setCollegeName] = useState<string>('Loading...');
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats>({
     totalUsers: 0,
     activeUsers: 0,
@@ -115,7 +129,8 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
       try {
         await Promise.all([
           loadUserProfile(),
-          loadDashboardStats()
+          loadDashboardStats(),
+          loadRecentActivities()
         ]);
       } catch (error) {
         console.error('Error loading dashboard data:', error);
@@ -299,33 +314,58 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
       userProfile?.user_type === 'admin';
   };
 
-  // Mock recent activities data for better UI
-  const recentActivities = [
-    {
-      title: 'New User Registered',
-      description: 'John Doe joined as Computer Science student',
-      time: '5 minutes ago',
-      type: 'user'
-    },
-    {
-      title: 'Course Updated',
-      description: 'Database Management course content modified',
-      time: '1 hour ago',
-      type: 'course'
-    },
-    {
-      title: 'Event Created',
-      description: 'Annual Tech Fest 2024 scheduled',
-      time: '2 hours ago',
-      type: 'event'
-    },
-    {
-      title: 'Payment Received',
-      description: 'Fee payment processed for Semester 6',
-      time: '3 hours ago',
-      type: 'payment'
+
+  const loadRecentActivities = async () => {
+    try {
+      if (!sessionData?.college_id || !sessionData?.user_id) return;
+
+      const { data, error } = await supabase.rpc(
+        'get_admin_activities',
+        {
+          p_college_id: sessionData.college_id,
+          p_admin_id: sessionData.user_id,
+          p_limit: 15,
+        }
+      );
+
+      if (error) {
+        console.error('Error fetching activities:', error);
+        return;
+      }
+
+      setActivities(data || []);
+    } catch (err) {
+      console.error('Failed to load activities:', err);
     }
-  ];
+  };
+
+  // Mock recent activities data for better UI
+  // const recentActivities = [
+  //   {
+  //     title: 'New User Registered',
+  //     description: 'John Doe joined as Computer Science student',
+  //     time: '5 minutes ago',
+  //     type: 'user'
+  //   },
+  //   {
+  //     title: 'Course Updated',
+  //     description: 'Database Management course content modified',
+  //     time: '1 hour ago',
+  //     type: 'course'
+  //   },
+  //   {
+  //     title: 'Event Created',
+  //     description: 'Annual Tech Fest 2024 scheduled',
+  //     time: '2 hours ago',
+  //     type: 'event'
+  //   },
+  //   {
+  //     title: 'Payment Received',
+  //     description: 'Fee payment processed for Semester 6',
+  //     time: '3 hours ago',
+  //     type: 'payment'
+  //   }
+  // ];
 
   const quickActions = [
     {
@@ -480,15 +520,20 @@ const AdminDashboard = ({ sessionData }: AdminDashboardProps) => {
                   <CardDescription className="text-sm">Latest system activities and updates</CardDescription>
                 </CardHeader>
                 <CardContent className="h-[calc(100%-100px)] overflow-y-auto overflow-x-hidden custom-scrollbar space-y-3 sm:space-y-4 p-4 sm:p-6 ">
-                  {recentActivities.map((activity, index) => (
-                    <div key={index} className="flex flex-row items-start justify-start space-x-2 p-3 rounded-lg border border-white/10 hover:border-purple-400/40 hover:bg-white/10 cursor-pointer transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/10 hover:-translate-y-0.5 will-change-transform">
+                  {activities.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center">
+                      No recent activity found
+                    </p>
+                  )}
+                  {activities.map((activity) => (
+                    <div key={activity.activity_id} className="flex flex-row items-start justify-start space-x-2 p-3 rounded-lg border border-white/10 hover:border-purple-400/40 hover:bg-white/10 cursor-pointer transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/10 hover:-translate-y-0.5 will-change-transform">
                       <div className="flex-shrink-0">
                         <div className="w-2 h-2 bg-purple-400 rounded-full mt-2 animate-pulse shadow-lg shadow-purple-400/50"></div>
                       </div>
                       <div className="flex flex-col justify-center flex-1 min-w-0">
                         <p className="font-medium text-card-foreground text-sm sm:text-base truncate">{activity.title}</p>
                         <p className="text-xs sm:text-sm text-muted-foreground leading-snug line-clamp-2">{activity.description}</p>
-                        <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{activity.time}</p>
+                        <p className="text-[10px] sm:text-xs text-white/40 font-mono mt-1">{dayjs(activity.activity_time).fromNow()}</p>
                       </div>
                     </div>
                   ))}
