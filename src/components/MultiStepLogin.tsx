@@ -28,6 +28,7 @@ const MultiStepLogin = () => {
   const [userEmail, setUserEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   
   // Signup form data
   const [signupData, setSignupData] = useState({
@@ -469,29 +470,32 @@ const MultiStepLogin = () => {
       {/* Background Grid Pattern */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
       
-      <div className="relative z-10 w-full max-w-md mx-auto px-4 sm:px-6 md:px-0">
+      <div className="relative z-10 w-full max-w-4xl mx-auto px-4 sm:px-6 md:px-0">
         {/* Hero Section - Compact for mobile */}
-        <div className="text-center mb-4 sm:mb-6 animate-fade-in-up">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-2 sm:mb-3 break-words px-2">
-            {collegeData ? collegeData.name : 'ColCord'}
-          </h1>
-          <p className="text-xs sm:text-sm md:text-base text-muted-foreground px-2">
-            Built for India. Global Standards.
-          </p>
-          {step > 1 && (
-            <div className="mt-3 sm:mt-4 flex items-center justify-center space-x-2">
-              <div className="h-0.5 w-6 sm:w-8 bg-primary"></div>
-              <span className="text-[10px] sm:text-xs text-muted-foreground font-medium whitespace-nowrap">
-                STEP {step} OF 3
-              </span>
-              <div className="h-0.5 w-6 sm:w-8 bg-white-10"></div>
-            </div>
-          )}
-        </div>
+<div className="text-center mb-4 sm:mb-6 animate-fade-in-up min-h-[140px] flex flex-col justify-center overflow-visible">
+  <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-2 sm:mb-3 whitespace-nowrap px-2">
+    {collegeData ? collegeData.name : 'ColCord'}
+  </h1>
 
-        <Card className="border-border bg-card backdrop-blur-sm shadow-lg overflow-hidden">
-          <CardHeader className="pb-3 sm:pb-4 pt-4 sm:pt-5">
-            <CardTitle className="text-lg sm:text-xl md:text-2xl text-center text-card-foreground font-semibold">
+  <div className="mt-3 sm:mt-4 h-[24px] flex items-center justify-center space-x-2">
+    {step > 1 && (
+      <>
+        <div className="h-0.5 w-6 sm:w-8 bg-primary"></div>
+        <span className="text-[10px] sm:text-xs text-muted-foreground font-medium whitespace-nowrap">
+          STEP {step - 1} OF 2
+        </span>
+        <div className="h-0.5 w-6 sm:w-8 bg-white-10"></div>
+      </>
+    )}
+  </div>
+</div>
+
+
+
+
+        <Card className="border-border bg-card backdrop-blur-sm shadow-lg overflow-hidden w-full">
+          <div className="h-[88px] flex items-center justify-center border-b border-border">
+            <h3 className="text-xl text-center text-card-foreground font-semibold px-4">
               {!isSignUp ? (
                 <>
                   {step === 1 && 'College Access'}
@@ -504,16 +508,15 @@ const MultiStepLogin = () => {
                   {step === 2 && 'Create Account'}
                 </>
               )}
-            </CardTitle>
-          </CardHeader>
-          
+            </h3>
+          </div>
 
-          <CardContent className="px-4 sm:px-6 md:px-8 pb-4 sm:pb-6">
+          <div className="h-[240px] px-6 pt-6 pb-4 flex flex-col">
 
             {!isSignUp && step === 1 && (
-              <div className="space-y-4 sm:space-y-5 animate-fade-in">
-                <div className="space-y-2">
-                  <Label htmlFor="collegeCode" className="text-sm sm:text-base font-medium text-foreground">
+              <div className="flex flex-col h-full">
+                <div className="flex flex-col gap-2 mb-4">
+                  <Label htmlFor="collegeCode" className="text-base font-medium text-foreground h-[24px] flex items-center">
                     College Code
                   </Label>
                   <Input
@@ -521,16 +524,16 @@ const MultiStepLogin = () => {
                     placeholder="Enter your college code"
                     type="text"
                     value={collegeCode}
-                    onChange={(e) => setCollegeCode(e.target.value)}
+                    onChange={(e) => setCollegeCode(e.target.value.toUpperCase())}
                     autoFocus
                     onKeyPress={(e) => e.key === 'Enter' && handleCollegeCodeSubmit()}
-                    className="bg-input border-border text-foreground placeholder:text-muted-foreground focus-ring h-10 sm:h-11 text-sm sm:text-base w-full"
+                    className="bg-input border-border text-foreground placeholder:text-muted-foreground focus-ring h-11 text-base w-full"
                   />
                 </div>
                 <Button 
                   onClick={handleCollegeCodeSubmit} 
                   disabled={isLoading}
-                  className="w-full h-11 sm:h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-all duration-300 hover-scale focus-ring text-sm sm:text-base"
+                  className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-all duration-300 hover-scale focus-ring text-base mb-2"
                 >
                   {isLoading ? (
                     <div className="flex items-center space-x-2">
@@ -539,13 +542,14 @@ const MultiStepLogin = () => {
                     </div>
                   ) : 'Continue'}
                 </Button>
+                <div className="h-10 w-full" />
               </div>
             )}
 
             {!isSignUp && step === 2 && (
-              <div className="space-y-4 sm:space-y-5 animate-fade-in">
-                <div className="space-y-2">
-                  <Label htmlFor="userCode" className="text-sm sm:text-base font-medium text-foreground">
+              <div className="flex flex-col h-full">
+                <div className="flex flex-col gap-2 mb-4">
+                  <Label htmlFor="userCode" className="text-base font-medium text-foreground h-[24px] flex items-center">
                     User Code
                   </Label>
                   <Input
@@ -556,13 +560,13 @@ const MultiStepLogin = () => {
                     onChange={(e) => setUserCode(e.target.value)}
                     autoFocus
                     onKeyPress={(e) => e.key === 'Enter' && handleUserCodeSubmit()}
-                    className="bg-input border-border text-foreground placeholder:text-muted-foreground focus-ring h-10 sm:h-11 text-sm sm:text-base w-full"
+                    className="bg-input border-border text-foreground placeholder:text-muted-foreground focus-ring h-11 text-base w-full"
                   />
                 </div>
                 <Button 
                   onClick={handleUserCodeSubmit} 
                   disabled={isLoading}
-                  className="w-full h-11 sm:h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-all duration-300 hover-scale focus-ring text-sm sm:text-base"
+                  className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-all duration-300 hover-scale focus-ring text-base"
                 >
                   {isLoading ? (
                     <div className="flex items-center space-x-2">
@@ -574,7 +578,7 @@ const MultiStepLogin = () => {
                 <Button 
                   onClick={() => setStep(1)} 
                   variant="ghost"
-                  className="w-full text-sm sm:text-base"
+                  className="w-full text-base h-10"
                 >
                   Back
                 </Button>
@@ -582,26 +586,45 @@ const MultiStepLogin = () => {
             )}
 
             {!isSignUp && step === 3 && (
-              <div className="space-y-4 sm:space-y-5 animate-fade-in">
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm sm:text-base font-medium text-foreground">
+              <div className="flex flex-col h-full">
+                <div className="flex flex-col gap-2 mb-4">
+                  <Label htmlFor="password" className="text-base font-medium text-foreground h-[24px] flex items-center">
                     Password
                   </Label>
-                  <Input
-                    id="password"
-                    placeholder="Enter your password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoFocus
-                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                    className="bg-input border-border text-foreground placeholder:text-muted-foreground focus-ring h-10 sm:h-11 text-sm sm:text-base w-full"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      placeholder="Enter your password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoFocus
+                      onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                      className="bg-input border-border text-foreground placeholder:text-muted-foreground focus-ring h-11 text-base w-full pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showPassword ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                          <line x1="1" y1="1" x2="23" y2="23"></line>
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                          <circle cx="12" cy="12" r="3"></circle>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </div>
                 <Button 
                   onClick={handleLogin} 
                   disabled={isLoading}
-                  className="w-full h-11 sm:h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-all duration-300 hover-scale focus-ring text-sm sm:text-base"
+                  className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-all duration-300 hover-scale focus-ring text-base"
                 >
                   {isLoading ? (
                     <div className="flex items-center space-x-2">
@@ -613,22 +636,22 @@ const MultiStepLogin = () => {
                 <Button 
                   onClick={() => setStep(2)} 
                   variant="ghost"
-                  className="w-full text-sm sm:text-base"
+                  className="w-full text-base h-10"
                 >
                   Back
                 </Button>
               </div>
             )}
-          </CardContent>
+          </div>
           
           {/* Footer section with fixed height */}
-          <div className="px-4 sm:px-5 md:px-6 pb-4 sm:pb-5 md:pb-6 space-y-3 sm:space-y-4 flex-shrink-0">
+          <div className="h-[72px] px-6 flex items-center justify-center border-t border-border">
             <div className="text-center">
               <a 
                 href="https://colcord.co.in/contact" 
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs sm:text-sm md:text-base text-muted-foreground hover:text-foreground transition-colors duration-300 underline-offset-4 hover:underline focus-ring rounded-sm inline-block"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors duration-300 underline-offset-4 hover:underline focus-ring rounded-sm inline-block"
               >
                 Need assistance? Contact support
               </a>

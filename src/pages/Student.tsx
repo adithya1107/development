@@ -17,6 +17,7 @@ import {
   Sun,
   Settings,
   User,
+  UserCircle,
   Sparkle,
   LogOut,
   Mail,
@@ -26,7 +27,6 @@ import {
   X,
   Award,
   TrendingUp,
-  UserCircle,
   Bot
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -644,10 +644,7 @@ const Student = () => {
 
                     <div className="p-2 space-y-1">
                       {[
-                        { icon: BookOpen, label: "My Courses", view: "courses" },
-                        { icon: TrendingUp, label: "My Grades", view: "gradebook" },
-                        { icon: Calendar, label: "My Attendance", view: "attendance" },
-                        { icon: Clock, label: "My Schedule", view: "schedule" },
+                        { icon: User, label: "Student Information", view: "profile" },
                         { icon: Settings, label: "Settings & Support", view: "support" },
                       ].map(({ icon: Icon, label, view }) => (
                         <Button
@@ -703,7 +700,7 @@ const Student = () => {
         <div className={cn(
           "flex-1 w-full min-w-0 transition-all duration-300 ease-in-out",
           "px-4 py-4 sm:px-12 sm:py-6 mx-auto",
-          sidebarCollapsed ? "md:ml-16" : "md:ml-64",
+          sidebarCollapsed ? "md:ml-16" : "md:ml-48",
         )}>
           {renderContent()}
         </div>

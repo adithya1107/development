@@ -297,18 +297,9 @@ const StudentDashboard = ({ studentData, onNavigate }: StudentDashboardProps) =>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold mb-2 inline-block">
-              Welcome back, {studentData.first_name}
+              Welcome, {studentData.first_name}
             </h1>
             <p>Student ID: {studentData.user_code}</p>
-            <Badge className="bg-green-600/30 text-green-100 border border-green-300/40 font-bold px-4 py-1.5 self-start md:self-auto hover:bg-green-600/40 hover:border-green-300/60 hover:cursor-pointer hover:shadow-[0_0_20px_rgba(34,197,94,0.4)] transition-all duration-300 mt-4">
-              STUDENT
-            </Badge>
-          </div>
-          <div className="text-right">
-            <p className="text-md">Current CGPA</p>
-            <p className="text-2xl font-bold text-role-student">
-              {stats.cgpa.toFixed(2)}
-            </p>
           </div>
         </div>
       </div>
@@ -323,14 +314,14 @@ const StudentDashboard = ({ studentData, onNavigate }: StudentDashboardProps) =>
                 className="bg-card/50 backdrop-blur-sm transition-all duration-300 hover:border-role-student/20 cursor-pointer hover-translate-up"
                 onClick={() => handleStatCardClick(stat.title)}
               >
-                <CardContent className="p-3 sm:p-4 md:p-5">
+                <CardContent className="p-2 sm:p-3">
                   <div className="flex items-center justify-between">
                     <div className="min-w-0">
-                      <p className="text-xs sm:text-sm font-medium text-muted-foreground truncate mb-1">{stat.title}</p>
-                      <p className="text-lg sm:text-xl md:text-2xl font-bold text-foreground truncate">{stat.value}</p>
+                      <p className="text-xs font-medium text-muted-foreground truncate mb-1">{stat.title}</p>
+                      <p className="text-base sm:text-lg font-bold text-foreground truncate">{stat.value}</p>
                     </div>
-                    <div className={`p-2 sm:p-3 rounded-lg flex-shrink-0 ml-3`}>
-                      <Icon className={`h-5 w-5 sm:h-6 ${stat.color} sm:w-6`} />
+                    <div className={`p-1.5 sm:p-2 rounded-lg flex-shrink-0 ml-2`}>
+                      <Icon className={`h-4 w-4 sm:h-5 ${stat.color} sm:w-5`} />
                     </div>
                   </div>
                 </CardContent>
