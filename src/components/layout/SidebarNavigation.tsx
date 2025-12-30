@@ -95,13 +95,13 @@ const SidebarNavigation = ({
           "bg-card border-r border-white/10 bg-black flex flex-col transition-all duration-300 ease-in-out",
 
           // Mobile styles
-          "fixed left-0 bottom-0 z-50 w-64 top-[64px]",
+          "fixed left-0 bottom-0 z-50 w-48 top-[64px]",
 
           // Desktop styles
           "md:fixed md:h-[calc(100vh-64px)]",
 
           // Width transitions
-          collapsed ? "md:w-16" : "md:w-64",
+          collapsed ? "md:w-16" : "md:w-48",
 
           // Mobile visibility
           mobileOpen

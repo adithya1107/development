@@ -489,8 +489,8 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-background p-3 sm:p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-[calc(100vh-4rem)] bg-background p-2 sm:p-4">
+      <div className="max-w-6xl mx-auto space-y-4">
         {/* Back Button */}
         <Button
           variant="ghost"
@@ -516,7 +516,7 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
           </div>
 
           {/* Profile Info */}
-          <div className="px-4 sm:px-8 pb-6 sm:pb-8">
+          <div className="px-3 sm:px-6 pb-4 sm:pb-6">
             <div className="flex flex-col sm:flex-row items-center sm:items-end -mt-16 sm:-mt-20 space-y-4 sm:space-y-0 sm:space-x-6">
               {/* Avatar */}
               <div className="relative group">
@@ -529,7 +529,7 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
                     />
                   ) : (
                     <div className="h-full w-full flex items-center justify-center bg-role-student/20">
-                      <User className="h-16 w-16 sm:h-20 sm:w-20 text-role-student" />
+                      <User className="h-12 w-12 sm:h-16 sm:w-16 text-role-student" />
                     </div>
                   )}
                 </div>
@@ -556,7 +556,7 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
 
               {/* Name and Basic Info */}
               <div className="flex-1 text-center sm:text-left space-y-2">
-                <h1 className="text-2xl sm:text-3xl font-bold text-foreground">
+                <h1 className="text-xl sm:text-2xl font-bold text-foreground">
                   {fullProfile!.name}
                 </h1>
                 <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-start space-y-1 sm:space-y-0 sm:space-x-4 text-sm text-muted-foreground">
@@ -576,13 +576,13 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
         </div>
 
         {/* Personal Information Section */}
-        <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-4 sm:p-8">
-          <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-6 flex items-center">
-            <User className="h-6 w-6 mr-3 text-role-student" />
+        <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-5">
+          <h2 className="text-lg sm:text-xl font-bold text-foreground mb-4 flex items-center">
+            <User className="h-5 w-5 mr-2 text-role-student" />
             Personal Information
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             {[
               { label: "Date of Birth", value: fullProfile?.dob, icon: Calendar },
               { label: "Gender", value: fullProfile?.gender, icon: Users },
@@ -593,11 +593,11 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
             ].map(({ label, value, icon: Icon }) => (
               <div
                 key={label}
-                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-4 hover:bg-white/10 transition-colors"
+                className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-3 hover:bg-white/10 transition-colors"
               >
-                <div className="flex items-center space-x-2 mb-2">
+                <div className="flex items-center space-x-2 mb-1">
                   <Icon className="h-4 w-4 text-role-student" />
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     {label}
                   </h3>
                 </div>
@@ -623,13 +623,13 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
         </div>
 
         {/* Contact Information Section */}
-        <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-4 sm:p-8">
-          <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-6 flex items-center">
-            <Phone className="h-6 w-6 mr-3 text-role-student" />
+        <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-5">
+          <h2 className="text-lg sm:text-xl font-bold text-foreground mb-4 flex items-center">
+            <Phone className="h-5 w-5 mr-2 text-role-student" />
             Contact Information
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             {/* Primary Contact */}
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-4 hover:bg-white/10 transition-colors">
               <div className="flex items-center space-x-2 mb-2">
@@ -673,13 +673,13 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
 
         {/* Hostel Information Section */}
         {(fullProfile?.hostel_building || fullProfile?.room_number || fullProfile?.mess_pref) && (
-          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-4 sm:p-8">
-            <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-6 flex items-center">
-              <Home className="h-6 w-6 mr-3 text-role-student" />
+          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-5">
+            <h2 className="text-lg sm:text-xl font-bold text-foreground mb-4 flex items-center">
+              <Home className="h-5 w-5 mr-2 text-role-student" />
               Hostel Information
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
               {/* Hostel Building */}
               <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-4 hover:bg-white/10 transition-colors">
                 <div className="flex items-center space-x-2 mb-2">
@@ -724,9 +724,9 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
 
         {/* Parent/Guardian Information Section */}
         {parentInfo.length > 0 && (
-          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-4 sm:p-8">
-            <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-6 flex items-center">
-              <Users className="h-6 w-6 mr-3 text-role-student" />
+          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-5">
+            <h2 className="text-lg sm:text-xl font-bold text-foreground mb-4 flex items-center">
+              <Users className="h-5 w-5 mr-2 text-role-student" />
               Parent/Guardian Information
             </h2>
 
@@ -810,9 +810,9 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
 
         {/* Academic Records Section */}
         {academicRecords.length > 0 && (
-          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-4 sm:p-8">
-            <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-6 flex items-center">
-              <TrendingUp className="h-6 w-6 mr-3 text-role-student" />
+          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-5">
+            <h2 className="text-lg sm:text-xl font-bold text-foreground mb-4 flex items-center">
+              <TrendingUp className="h-5 w-5 mr-2 text-role-student" />
               Academic Records
             </h2>
 
@@ -919,9 +919,9 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
 
         {/* Scholarships Section */}
         {scholarships.length > 0 && (
-          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-4 sm:p-8">
-            <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-6 flex items-center">
-              <Award className="h-6 w-6 mr-3 text-role-student" />
+          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-5">
+            <h2 className="text-lg sm:text-xl font-bold text-foreground mb-4 flex items-center">
+              <Award className="h-5 w-5 mr-2 text-role-student" />
               Scholarships & Awards
             </h2>
 
@@ -983,9 +983,9 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
 
         {/* Education History Section */}
         {educationHistory.length > 0 && (
-          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-4 sm:p-8">
-            <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-6 flex items-center">
-              <GraduationCap className="h-6 w-6 mr-3 text-role-student" />
+          <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-5">
+            <h2 className="text-lg sm:text-xl font-bold text-foreground mb-4 flex items-center">
+              <GraduationCap className="h-5 w-5 mr-2 text-role-student" />
               Education History
             </h2>
 
@@ -1075,9 +1075,9 @@ const StudentProfilePage: React.FC<StudentProfileProps> = ({
         )}
 
         {/* Documents Section */}
-        <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-4 sm:p-8">
-          <h2 className="text-xl sm:text-2xl font-bold text-foreground mb-6 flex items-center">
-            <FileText className="h-6 w-6 mr-3 text-role-student" />
+        <div className="bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl p-3 sm:p-5">
+          <h2 className="text-lg sm:text-xl font-bold text-foreground mb-4 flex items-center">
+            <FileText className="h-5 w-5 mr-2 text-role-student" />
             Documents
           </h2>
 
