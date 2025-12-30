@@ -145,16 +145,26 @@ const TeacherCGPAManagement = ({ teacherData }) => {
   };
 
   const calculateGradeFromPercentage = (percentage) => {
+    const percentageNum = parseFloat(percentage) || 0;
     const grade = gradeScale.find(
-      (g) => percentage >= g.min_percentage && percentage <= g.max_percentage
+      (g) => percentageNum >= g.min_percentage && percentageNum <= g.max_percentage
     );
     
+    // Always update percentage, only update grade if found
     if (grade) {
       setGradeData(prev => ({
         ...prev,
-        percentage: parseFloat(percentage),
+        percentage: percentageNum,
         grade_letter: grade.grade_letter,
         grade_point: grade.grade_point
+      }));
+    } else {
+      // Update only percentage, clear grade if no match
+      setGradeData(prev => ({
+        ...prev,
+        percentage: percentageNum,
+        grade_letter: '',
+        grade_point: 0
       }));
     }
   };
@@ -230,6 +240,42 @@ const TeacherCGPAManagement = ({ teacherData }) => {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const fetchAutoCalculatedGrade = async () => {
+    if (!selectedCourse || !selectedStudent) return;
+
+    try {
+      const { data, error } = await supabase.rpc('calculate_course_marks', {
+        p_student_id: selectedStudent,
+        p_course_id: selectedCourse
+      });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const marks = data[0];
+        calculateGradeFromPercentage(marks.percentage);
+        
+        toast({
+          title: "Auto-calculated Grade",
+          description: `Based on quizzes and assessments: ${marks.percentage.toFixed(2)}%`,
+        });
+      } else {
+        toast({
+          title: "No Assessment Data",
+          description: "No quizzes or assessments found for this student in this course.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching auto-calculated grade:', error);
+      toast({
+        title: "Error",
+        description: "Failed to calculate grade from assessments.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -398,6 +444,16 @@ const TeacherCGPAManagement = ({ teacherData }) => {
                   >
                     <Calculator className="w-4 h-4 mr-2" />
                     Calculate
+                  </Button>
+                </div>
+                <div className="pt-2">
+                  <Button
+                    onClick={fetchAutoCalculatedGrade}
+                    variant="outline"
+                    className="w-full border-accent/30"
+                  >
+                    <Calculator className="w-4 h-4 mr-2" />
+                    Auto-Calculate from Assessments
                   </Button>
                 </div>
               </div>
