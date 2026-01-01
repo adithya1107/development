@@ -33,8 +33,18 @@ const TeacherCGPAManagement = ({ teacherData }) => {
   useEffect(() => {
     if (selectedCourse) {
       fetchStudents();
+
+      // When a course is selected, default academic year and semester to the course
+      const course = courses.find(c => c.id === selectedCourse);
+      if (course) {
+        setGradeData(prev => ({
+          ...prev,
+          academic_year: course.academic_year || prev.academic_year,
+          semester: course.semester || prev.semester
+        }));
+      }
     }
-  }, [selectedCourse]);
+  }, [selectedCourse, courses]);
 
   useEffect(() => {
     if (selectedCourse && selectedStudent) {
@@ -335,33 +345,53 @@ const TeacherCGPAManagement = ({ teacherData }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="academic-year">Academic Year</Label>
+              {/* If the selected course has an academic_year, lock it (read-only). Otherwise allow manual entry. */}
               <Input
                 id="academic-year"
                 type="text"
                 value={gradeData.academic_year}
                 onChange={(e) => setGradeData(prev => ({ ...prev, academic_year: e.target.value }))}
                 placeholder="2024"
+                disabled={!!(courses.find(c => c.id === selectedCourse)?.academic_year)}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="semester">Semester</Label>
-              <Select 
-                value={gradeData.semester} 
-                onValueChange={(value) => setGradeData(prev => ({ ...prev, semester: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select semester" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Fall">Fall</SelectItem>
-                  <SelectItem value="Spring">Spring</SelectItem>
-                  <SelectItem value="Summer">Summer</SelectItem>
-                  <SelectItem value="Winter">Winter</SelectItem>
-                  <SelectItem value="Semester 1">Semester 1</SelectItem>
-                  <SelectItem value="Semester 2">Semester 2</SelectItem>
-                </SelectContent>
-              </Select>
+              {/* If course defines a semester, only allow that semester and disable changing it to avoid invalid selections */}
+              {courses.find(c => c.id === selectedCourse)?.semester ? (
+                <Select
+                  value={gradeData.semester}
+                  onValueChange={(value) => setGradeData(prev => ({ ...prev, semester: value }))}
+                  disabled
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select semester" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={courses.find(c => c.id === selectedCourse)?.semester}>
+                      {courses.find(c => c.id === selectedCourse)?.semester}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Select 
+                  value={gradeData.semester} 
+                  onValueChange={(value) => setGradeData(prev => ({ ...prev, semester: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select semester" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Fall">Fall</SelectItem>
+                    <SelectItem value="Spring">Spring</SelectItem>
+                    <SelectItem value="Summer">Summer</SelectItem>
+                    <SelectItem value="Winter">Winter</SelectItem>
+                    <SelectItem value="Semester 1">Semester 1</SelectItem>
+                    <SelectItem value="Semester 2">Semester 2</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
         </CardContent>

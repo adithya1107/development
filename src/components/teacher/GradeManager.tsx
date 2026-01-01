@@ -315,6 +315,19 @@ const GradeManager = () => {
         };
       });
 
+      // Ensure recorded_by references an existing profile or else set to null to avoid FK errors
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('id', user.user.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error('Failed to verify user profile before saving grade', profileError);
+      }
+
+      const recordedBy = profile ? user.user.id : null;
+
       const gradeData = {
         student_id: selectedStudent,
         course_id: selectedCourse,
@@ -322,7 +335,7 @@ const GradeManager = () => {
         marks_obtained: calculatedScore,
         max_marks: 100,
         grade_letter: finalGrade,
-        recorded_by: user.user.id,
+        recorded_by: recordedBy,
         grade_breakdown: breakdown,
       };
 
@@ -350,9 +363,13 @@ const GradeManager = () => {
         description: `Grade saved successfully! ${customAssessments.length} custom assessments stored.`,
       });
     } catch (error) {
+      console.error('Failed to save grade', error);
+      const msg = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+      const details = error?.details ? ` (${error.details})` : '';
+
       toast({
         title: "Error",
-        description: "Failed to save grade: " + error.message,
+        description: "Failed to save grade: " + msg + details,
         variant: "destructive",
       });
     } finally {
