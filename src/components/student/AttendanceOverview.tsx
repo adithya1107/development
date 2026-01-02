@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CheckCircle, XCircle, AlertTriangle, Clock, Hash, Scan, QrCode as QrCodeIcon, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Clock, Hash, Scan, QrCode as QrCodeIcon, AlertCircle, Edit } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import QrScanner from 'qr-scanner';
@@ -767,6 +767,12 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
                               }
                             </div>
                           )}
+                          {record.marked_by && record.marked_by !== record.student_id && (
+                            <div className="text-xs mt-1 flex items-center gap-1 text-blue-600">
+                              <Edit className="h-3 w-3" />
+                              Modified by instructor
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           {getStatusIcon(record.status)}
@@ -890,6 +896,12 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
                           </p>
                           {record.status === 'late' && (
                             <p className="text-xs text-yellow-600 mt-1">Points: 0.5x (Half credit)</p>
+                          )}
+                          {record.marked_by && record.marked_by !== record.student_id && (
+                            <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                              <Edit className="h-3 w-3" />
+                              Modified by instructor
+                            </p>
                           )}
                         </div>
                       </div>

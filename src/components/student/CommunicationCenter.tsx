@@ -7,34 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { 
-  MessageSquare, 
-  Send,
-  Search,
-  Users,
-  UserPlus,
-  Paperclip,
-  Image,
-  Smile,
-  MoreVertical,
-  Phone,
-  Video,
-  Archive,
-  Star,
-  Check,
-  CheckCheck,
-  Clock,
-  X,
-  Settings,
-  Bell,
-  BellOff,
-  Download,
-  Edit2,
-  Trash2,
-  ArrowLeft,
-  Menu
+  MessageSquare, Send, Search, Users, UserPlus, Paperclip, Image,
+  Smile, MoreVertical, Phone, Video, Archive, Star, Check, CheckCheck,
+  Clock, X, Settings, Bell, BellOff, Download, Edit2, Trash2, ArrowLeft, Menu
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 const CommunicationHub = ({ studentData, initialChannelId }) => {
   const [activeTab, setActiveTab] = useState('chats');
@@ -54,6 +33,8 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
   const messagesContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const messageChannelRef = useRef<RealtimeChannel | null>(null);
+  const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -61,42 +42,14 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
       fetchChannels();
       fetchContacts();
       loadLastReadTimestamps();
+      setupRealtimeSubscriptions();
       
-      // Subscribe to real-time message updates
-      const messageSubscription = supabase
-        .channel('messages')
-        .on('postgres_changes', 
-          { event: 'INSERT', schema: 'public', table: 'messages' },
-          (payload) => {
-            handleNewMessage(payload.new);
-          }
-        )
-        .on('postgres_changes', 
-          { event: 'UPDATE', schema: 'public', table: 'messages' },
-          (payload) => {
-            if (selectedChannel && payload.new?.channel_id === selectedChannel.id) {
-              fetchMessages(selectedChannel.id);
-            }
-          }
-        )
-        .subscribe();
-
-      // Subscribe to typing indicators
-      const typingChannel = supabase.channel('typing-indicators');
-      typingChannel
-        .on('broadcast', { event: 'typing' }, (payload) => {
-          handleTypingIndicator(payload);
-        })
-        .subscribe();
-
       return () => {
-        messageSubscription.unsubscribe();
-        typingChannel.unsubscribe();
+        cleanupSubscriptions();
       };
     }
   }, [studentData?.user_id]);
 
-  // Handle initial channel selection from marketplace
   useEffect(() => {
     if (initialChannelId && channels.length > 0) {
       const channel = channels.find(c => c.id === initialChannelId);
@@ -106,25 +59,99 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
     }
   }, [initialChannelId, channels]);
 
-  // Mark messages as read when viewing
   useEffect(() => {
     if (selectedChannel) {
       markChannelAsRead(selectedChannel.id);
     }
   }, [messages, selectedChannel]);
 
+  const setupRealtimeSubscriptions = () => {
+    // Subscribe to all message changes
+    messageChannelRef.current = supabase
+      .channel('messages-all')
+      .on('postgres_changes', 
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          handleNewMessage(payload.new);
+        }
+      )
+      .on('postgres_changes', 
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        (payload) => {
+          handleMessageUpdate(payload.new);
+        }
+      )
+      .on('postgres_changes', 
+        { event: 'DELETE', schema: 'public', table: 'messages' },
+        (payload) => {
+          handleMessageDelete(payload.old);
+        }
+      )
+      .subscribe((status) => {
+        console.log('Message subscription status:', status);
+      });
+
+    // Subscribe to typing indicators
+    typingChannelRef.current = supabase
+      .channel('typing-indicators-global')
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        handleTypingIndicator(payload);
+      })
+      .subscribe((status) => {
+        console.log('Typing subscription status:', status);
+      });
+  };
+
+  const cleanupSubscriptions = () => {
+    if (messageChannelRef.current) {
+      supabase.removeChannel(messageChannelRef.current);
+      messageChannelRef.current = null;
+    }
+    if (typingChannelRef.current) {
+      supabase.removeChannel(typingChannelRef.current);
+      typingChannelRef.current = null;
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+  };
+
   const handleNewMessage = async (newMessageData) => {
-    // Update channels list to move conversation to top
+    // Fetch complete message data with sender info
+    const { data: completeMessage } = await supabase
+      .from('messages')
+      .select(`
+        *,
+        sender:user_profiles!messages_sender_id_fkey(
+          first_name,
+          last_name,
+          user_type,
+          profile_picture_url
+        ),
+        reactions:message_reactions(*)
+      `)
+      .eq('id', newMessageData.id)
+      .single();
+
+    if (!completeMessage) return;
+
+    // Update channels list to reflect new message
     await fetchChannels();
     
-    // If message is in current channel, update messages
+    // If message is in current channel, add it to messages
     if (selectedChannel && newMessageData.channel_id === selectedChannel.id) {
-      await fetchMessages(selectedChannel.id);
+      setMessages(prev => {
+        // Avoid duplicates
+        if (prev.some(m => m.id === completeMessage.id)) return prev;
+        return [...prev, completeMessage];
+      });
       
-      // Mark as read if user is viewing the channel
+      // Mark as read if user is viewing the channel and window has focus
       if (document.hasFocus()) {
         markChannelAsRead(selectedChannel.id);
       }
+      
+      setTimeout(scrollToBottom, 100);
     } else {
       // Show notification for new message in other channels
       const channel = channels.find(c => c.id === newMessageData.channel_id);
@@ -136,6 +163,21 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
         });
       }
     }
+  };
+
+  const handleMessageUpdate = (updatedMessageData) => {
+    if (selectedChannel && updatedMessageData.channel_id === selectedChannel.id) {
+      setMessages(prev => 
+        prev.map(msg => msg.id === updatedMessageData.id ? { ...msg, ...updatedMessageData } : msg)
+      );
+    }
+  };
+
+  const handleMessageDelete = (deletedMessageData) => {
+    if (selectedChannel && deletedMessageData.channel_id === selectedChannel.id) {
+      setMessages(prev => prev.filter(msg => msg.id !== deletedMessageData.id));
+    }
+    fetchChannels(); // Update channel list
   };
 
   const handleTypingIndicator = (payload) => {
@@ -151,6 +193,17 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
       
       if (is_typing) {
         newState[channel_id][user_id] = user_name;
+        
+        // Auto-clear after 5 seconds
+        setTimeout(() => {
+          setTypingUsers(current => {
+            const updated = { ...current };
+            if (updated[channel_id]?.[user_id]) {
+              delete updated[channel_id][user_id];
+            }
+            return updated;
+          });
+        }, 5000);
       } else {
         delete newState[channel_id][user_id];
       }
@@ -160,9 +213,9 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
   };
 
   const sendTypingIndicator = (isTyping) => {
-    if (!selectedChannel) return;
+    if (!selectedChannel || !typingChannelRef.current) return;
     
-    supabase.channel('typing-indicators').send({
+    typingChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
       payload: {
@@ -215,7 +268,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
 
   const fetchChannels = async () => {
     try {
-      // Get channels where user is a member
       const { data: memberChannels, error: memberError } = await supabase
         .from('channel_members')
         .select('channel_id')
@@ -231,7 +283,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
         return;
       }
 
-      // Get channel details
       const { data: channelData, error: channelError } = await supabase
         .from('communication_channels')
         .select(`
@@ -246,7 +297,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
 
       if (channelError) throw channelError;
 
-      // Get last message for each channel and sort by it
       const channelsWithMessages = await Promise.all(
         (channelData || []).map(async (channel) => {
           const { data: lastMessage } = await supabase
@@ -261,7 +311,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
             .limit(1)
             .single();
 
-          // Get member count
           const { count } = await supabase
             .from('channel_members')
             .select('*', { count: 'exact', head: true })
@@ -273,12 +322,11 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
             lastMessageTime: lastMessage?.created_at || channel.created_at,
             lastMessageSender: lastMessage?.sender,
             memberCount: count || 0,
-            unreadCount: 0 // Will be calculated based on lastReadTimestamps
+            unreadCount: 0
           };
         })
       );
 
-      // Sort by last message time (most recent first)
       channelsWithMessages.sort((a, b) => 
         new Date(b.lastMessageTime) - new Date(a.lastMessageTime)
       );
@@ -330,7 +378,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
 
   const fetchContacts = async () => {
     try {
-      // Students can only contact teachers, alumni, and other students
       const allowedUserTypes = ['teacher', 'alumni', 'student'];
       
       const { data, error } = await supabase
@@ -356,7 +403,7 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
     await fetchMessages(channel.id);
     markChannelAsRead(channel.id);
     setActiveTab('chats');
-    setShowMobileSidebar(false); // Hide sidebar on mobile when chat is selected
+    setShowMobileSidebar(false);
   };
 
   const handleSendMessage = async () => {
@@ -378,8 +425,7 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
 
       if (error) throw error;
 
-      await fetchMessages(selectedChannel.id);
-      await fetchChannels();
+      // Message will be added via real-time subscription
     } catch (error) {
       console.error('Error sending message:', error);
       setNewMessage(messageText);
@@ -393,7 +439,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
 
   const createDirectChannel = async (contactId) => {
     try {
-      // Check if direct channel already exists
       const { data: existingChannels } = await supabase
         .from('channel_members')
         .select('channel_id')
@@ -426,7 +471,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
         }
       }
 
-      // Create new direct channel
       const contact = contacts.find(c => c.id === contactId);
       const { data: newChannel, error: channelError } = await supabase
         .from('communication_channels')
@@ -442,7 +486,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
 
       if (channelError) throw channelError;
 
-      // Add both users as members
       const { error: memberError } = await supabase
         .from('channel_members')
         .insert([
@@ -538,7 +581,7 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Header - Hide on mobile when chat is selected */}
+      {/* Header */}
       <div className={`bg-sidebar-background border-b border-border px-4 sm:px-6 py-3 sm:py-4 ${
         selectedChannel ? 'hidden lg:block' : 'block'
       }`}>
@@ -603,11 +646,10 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - Show only when no chat selected on mobile/tablet */}
+        {/* Sidebar */}
         <div className={`w-full lg:w-80 bg-sidebar-background border-r border-sidebar-border flex flex-col ${
           selectedChannel ? 'hidden lg:flex' : 'flex'
         }`}>
-          {/* Search */}
           <div className="p-3 sm:p-4 border-b border-sidebar-border">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -620,7 +662,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
             </div>
           </div>
 
-          {/* Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
             <TabsList className="grid w-full grid-cols-2 mx-3 mt-2 bg-muted">
               <TabsTrigger value="chats" className="data-[state=active]:bg-accent text-xs sm:text-sm">Chats</TabsTrigger>
@@ -736,20 +777,19 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
           </Tabs>
         </div>
 
-        {/* Chat Area - Show only when chat selected on mobile/tablet */}
+        {/* Chat Area */}
         {selectedChannel ? (
           <div className={`w-full lg:flex-1 flex flex-col bg-background fixed lg:relative top-16 lg:top-0 inset-x-0 bottom-0 lg:inset-auto z-50 lg:z-10 ${
             selectedChannel ? 'flex' : 'hidden lg:flex'
           }`}>
-            {/* Chat Header - Fixed */}
+            {/* Chat Header */}
             <div className="bg-sidebar-background border-b border-border px-3 sm:px-6 py-3 sm:py-4 flex-shrink-0 relative z-10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
-                  {/* Back button - mobile/tablet only */}
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleChannelSelect(null)}
+                    onClick={() => setSelectedChannel(null)}
                     className="lg:hidden flex-shrink-0 p-2"
                   >
                     <ArrowLeft className="h-5 w-5" />
@@ -777,7 +817,7 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
               </div>
             </div>
 
-            {/* Messages - Scrollable area */}
+            {/* Messages */}
             <div 
               ref={messagesContainerRef}
               className="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 md:space-y-4 min-h-0"
@@ -844,14 +884,14 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
               )}
             </div>
 
-            {/* Typing Indicator - Fixed */}
+            {/* Typing Indicator */}
             {getTypingText() && (
               <div className="px-4 md:px-6 py-2 bg-sidebar-background/50 flex-shrink-0">
                 <p className="text-xs md:text-sm text-muted-foreground italic">{getTypingText()}</p>
               </div>
             )}
 
-            {/* Message Input - Fixed */}
+            {/* Message Input */}
             <div className="bg-sidebar-background border-t border-border px-3 md:px-6 py-3 md:py-4 flex-shrink-0">
               <div className="flex items-end space-x-2">
                 <div className="flex-1 relative">
@@ -902,51 +942,6 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
           </div>
         )}
       </div>
-
-      {/* New Chat Dialog */}
-      <Dialog open={showNewChatDialog} onOpenChange={setShowNewChatDialog}>
-        <DialogContent className="sm:max-w-md max-h-[80vh] flex flex-col">
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle>Start New Conversation</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col flex-1 overflow-hidden space-y-4">
-            <div className="relative flex-shrink-0">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search contacts..."
-                value={contactSearchQuery}
-                onChange={(e) => setContactSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
-              {filteredContacts.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8 text-sm">No contacts found</p>
-              ) : (
-                filteredContacts.map(contact => (
-                  <div
-                    key={contact.id}
-                    className="p-3 hover:bg-accent rounded-sm cursor-pointer transition-all"
-                    onClick={() => createDirectChannel(contact.id)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-primary/10 border border-border rounded-sm flex items-center justify-center text-foreground font-semibold flex-shrink-0">
-                        {getInitials(contact.first_name, contact.last_name)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground text-sm truncate">
-                          {contact.first_name} {contact.last_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground capitalize">{contact.user_type}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

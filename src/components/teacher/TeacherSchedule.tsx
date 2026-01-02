@@ -18,10 +18,15 @@ import {
   CheckCircle,
   Clock,
   Edit,
-  AlertCircle
+  AlertCircle,
+  History,
+  FileText,
+  AlertTriangle,
+  XCircle
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@radix-ui/react-select';
 
 interface TeacherScheduleProps {
   teacherData: any;
@@ -51,6 +56,12 @@ const TeacherSchedule = ({ teacherData }: TeacherScheduleProps) => {
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number; showBelow?: boolean } | null>(null);
   const hoverTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const isHoveringRef = React.useRef<boolean>(false);
+
+const [pastSessions, setPastSessions] = useState<any[]>([]);
+const [selectedHistorySession, setSelectedHistorySession] = useState<any>(null);
+const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+const [selectedCourseFilter, setSelectedCourseFilter] = useState('all');
+const [loadingHistory, setLoadingHistory] = useState(false);
 
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thur', 'Fri', 'Sat'];
 
@@ -86,6 +97,13 @@ const TeacherSchedule = ({ teacherData }: TeacherScheduleProps) => {
 
     return () => clearInterval(interval);
   }, [isQRDialogOpen, selectedClass]);
+
+  // Fetch past sessions when tab changes or course filter changes
+  useEffect(() => {
+    if (teacherData?.user_id && teacherCourseIds.length > 0) {
+      fetchPastSessions();
+    }
+  }, [teacherData, teacherCourseIds, selectedCourseFilter]);
 
   const timeToMinutes = (timeStr: string): number => {
     const [hours, minutes] = timeStr.split(':').map(Number);
@@ -656,18 +674,25 @@ const TeacherSchedule = ({ teacherData }: TeacherScheduleProps) => {
     }
   };
 
-  const updateStudentAttendance = async (studentId: string, newStatus: 'late') => {
-    if (!currentSessionId) return;
+  const updateStudentAttendance = async (studentId: string, newStatus: 'present' | 'late') => {
+  if (!currentSessionId) return;
 
-    try {
-      const { data: existing } = await supabase
-        .from('attendance')
-        .select('id, status')
-        .eq('session_id', currentSessionId)
-        .eq('student_id', studentId)
-        .single();
+  try {
+    const { data: existing } = await supabase
+      .from('attendance')
+      .select('id, status')
+      .eq('session_id', currentSessionId)
+      .eq('student_id', studentId)
+      .single();
 
-      if (existing && existing.status === 'absent') {
+    if (existing) {
+      // Allow Late → Present and Absent → Late transitions
+      const allowedTransitions = {
+        'late': ['present'],
+        'absent': ['late']
+      };
+
+      if (allowedTransitions[existing.status]?.includes(newStatus)) {
         const { error } = await supabase
           .from('attendance')
           .update({ 
@@ -679,17 +704,161 @@ const TeacherSchedule = ({ teacherData }: TeacherScheduleProps) => {
 
         if (error) throw error;
 
-        toast.success('Attendance updated to late');
+        toast.success(`Attendance updated to ${newStatus}`);
         await fetchAttendanceForSession();
         setEditingStudent(null);
       } else {
-        toast.error('Can only change absent to late');
+        toast.error('Invalid status transition');
       }
-    } catch (error) {
-      console.error('Error updating attendance:', error);
-      toast.error('Failed to update attendance');
     }
-  };
+  } catch (error) {
+    console.error('Error updating attendance:', error);
+    toast.error('Failed to update attendance');
+  }
+};
+
+  // Fetch past attendance sessions
+const fetchPastSessions = async () => {
+  if (teacherCourseIds.length === 0) return;
+
+  try {
+    setLoadingHistory(true);
+
+    let query = supabase
+      .from('attendance_sessions')
+      .select(`
+        *,
+        courses (
+          id,
+          course_name,
+          course_code
+        )
+      `)
+      .eq('instructor_id', teacherData.user_id)
+      .order('session_date', { ascending: false })
+      .order('start_time', { ascending: false })
+      .limit(50);
+
+    if (selectedCourseFilter !== 'all') {
+      query = query.eq('course_id', selectedCourseFilter);
+    }
+
+    const { data: sessions, error } = await query;
+
+    if (error) throw error;
+
+    if (sessions) {
+      // Fetch attendance counts for each session
+      const sessionsWithStats = await Promise.all(
+        sessions.map(async (session) => {
+          const { data: attendanceData } = await supabase
+            .from('attendance')
+            .select('status')
+            .eq('session_id', session.id);
+
+          const presentCount = attendanceData?.filter(a => a.status === 'present').length || 0;
+          const lateCount = attendanceData?.filter(a => a.status === 'late').length || 0;
+          const absentCount = attendanceData?.filter(a => a.status === 'absent').length || 0;
+          const totalStudents = attendanceData?.length || 0;
+
+          return {
+            ...session,
+            present_count: presentCount,
+            late_count: lateCount,
+            absent_count: absentCount,
+            total_students: totalStudents
+          };
+        })
+      );
+
+      setPastSessions(sessionsWithStats);
+    }
+  } catch (error) {
+    console.error('Error fetching past sessions:', error);
+    toast.error('Failed to load attendance history');
+  } finally {
+    setLoadingHistory(false);
+  }
+};
+
+// View details of a past session
+const viewSessionDetails = async (session: any) => {
+  try {
+    setSelectedHistorySession(session);
+    setCurrentSessionId(session.id);
+    setHistoryDialogOpen(true);
+
+    // Fetch attendance for this session
+    await fetchAttendanceForHistorySession(session.id, session.course_id);
+  } catch (error) {
+    console.error('Error viewing session details:', error);
+    toast.error('Failed to load session details');
+  }
+};
+
+// Fetch attendance for a historical session
+const fetchAttendanceForHistorySession = async (sessionId: string, courseId: string) => {
+  try {
+    const { data: attendance, error: attError } = await supabase
+      .from('attendance')
+      .select(`
+        student_id,
+        status,
+        marked_at,
+        marked_by,
+        session_id,
+        device_info,
+        user_profiles!attendance_student_id_fkey (
+          id,
+          first_name,
+          last_name,
+          user_code
+        )
+      `)
+      .eq('session_id', sessionId)
+      .order('marked_at', { ascending: false });
+
+    if (attError) throw attError;
+
+    const { data: allEnrolled, error: enrollError } = await supabase
+      .from('enrollments')
+      .select(`
+        student_id,
+        user_profiles!enrollments_student_id_fkey (
+          id,
+          first_name,
+          last_name,
+          user_code
+        )
+      `)
+      .eq('course_id', courseId)
+      .eq('status', 'enrolled');
+
+    if (enrollError) throw enrollError;
+
+    const allStudentsWithStatus = (allEnrolled || []).map(enrollment => {
+      const attendanceRecord = (attendance || []).find(a => a.student_id === enrollment.student_id);
+
+      return {
+        student_id: enrollment.student_id,
+        user_profiles: enrollment.user_profiles,
+        status: attendanceRecord?.status || 'absent',
+        marked_at: attendanceRecord?.marked_at || null,
+        marked_by: attendanceRecord?.marked_by || null,
+        session_id: sessionId,
+        device_info: attendanceRecord?.device_info
+      };
+    });
+
+    setAttendanceRecords(allStudentsWithStatus);
+
+    if (attendance && attendance.length > 0) {
+      await fetchCourseAttendanceStats(courseId, attendance);
+    }
+  } catch (error) {
+    console.error('Error fetching historical attendance:', error);
+  }
+};
 
   const getAttendancePercentage = (studentId: string) => {
     const stats = courseAttendanceStats.find(s => s.student_id === studentId);
@@ -1008,11 +1177,12 @@ const TeacherSchedule = ({ teacherData }: TeacherScheduleProps) => {
       )}
       
       <Tabs defaultValue="schedule" className="space-y-4">
-        <TabsContent value="schedule" className="space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-xl sm:text-2xl font-bold">My Schedule</h2>
-          </div>
-
+        <TabsList>
+          <TabsTrigger value="schedule">Schedule</TabsTrigger>
+          <TabsTrigger value="history">Attendance History</TabsTrigger> 
+        </TabsList>
+        <TabsContent value="schedule" className="space-y-4">
+          {/* Schedule Component */}
           <Dialog open={isQRDialogOpen} onOpenChange={setIsQRDialogOpen}>
             <DialogContent className="max-w-3xl max-h-[90vh] mt-2 overflow-y-auto">
               <DialogHeader>
@@ -1099,53 +1269,118 @@ const TeacherSchedule = ({ teacherData }: TeacherScheduleProps) => {
                             </div>
                             <div className="text-right space-y-1 flex items-center gap-2 sm:gap-3">
                               {isMarked ? (
-                                <>
-                                  <div>
-                                    <p className="text-xs sm:text-sm font-medium">
-                                      {new Date(record.marked_at).toLocaleTimeString()}
-                                    </p>
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant="outline" className="text-xs capitalize">
-                                        {record.status}
-                                        {record.status === 'late' && ' (0.5x)'}
-                                      </Badge>
-                                      <span className={`text-xs font-semibold ${getAttendanceColor(attendancePercentage)}`}>
-                                        {attendancePercentage}%
-                                      </span>
-                                    </div>
+                              <>
+                                <div>
+                                  <p className="text-xs sm:text-sm font-medium">
+                                    {new Date(record.marked_at).toLocaleTimeString()}
+                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-xs capitalize">
+                                      {record.status}
+                                      {record.status === 'late' && ' (0.5x)'}
+                                    </Badge>
+                                    <span className={`text-xs font-semibold ${getAttendanceColor(attendancePercentage)}`}>
+                                      {attendancePercentage}%
+                                    </span>
                                   </div>
-                                  {record.status === 'absent' && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      onClick={() => {
-                                        if (editingStudent === record.student_id) {
-                                          updateStudentAttendance(record.student_id, 'late');
-                                        } else {
-                                          setEditingStudent(record.student_id);
-                                        }
-                                      }}
-                                      className="h-8"
-                                    >
-                                      {editingStudent === record.student_id ? (
-                                        <>
+                                </div>
+
+                                {/* Edit buttons for LATE status */}
+                                {record.status === 'late' && (
+                                  <div className="flex gap-2">
+                                    {editingStudent === record.student_id ? (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updateStudentAttendance(record.student_id, 'present')}
+                                          className="h-8 bg-green-50 hover:bg-green-100 border-green-300"
+                                        >
                                           <CheckCircle className="h-3 w-3 mr-1" />
-                                          Confirm
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Edit className="h-3 w-3 mr-1" />
+                                          Present
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => setEditingStudent(null)}
+                                          className="h-8"
+                                        >
+                                          Cancel
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setEditingStudent(record.student_id)}
+                                        className="h-8"
+                                      >
+                                        <Edit className="h-3 w-3 mr-1" />
+                                        Edit
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Edit buttons for ABSENT status */}
+                                {record.status === 'absent' && (
+                                  <div className="flex gap-2">
+                                    {editingStudent === record.student_id ? (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updateStudentAttendance(record.student_id, 'late')}
+                                          className="h-8 bg-yellow-50 hover:bg-yellow-100 border-yellow-300"
+                                        >
+                                          <AlertTriangle className="h-3 w-3 mr-1" />
                                           Late
-                                        </>
-                                      )}
-                                    </Button>
-                                  )}
-                                </>
-                              ) : (
-                                <Badge variant="outline" className="text-xs text-yellow-700 border-yellow-300">
-                                  Waiting...
-                                </Badge>
-                              )}
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => updateStudentAttendance(record.student_id, 'present')}
+                                          className="h-8 bg-green-50 hover:bg-green-100 border-green-300"
+                                        >
+                                          <CheckCircle className="h-3 w-3 mr-1" />
+                                          Present
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => setEditingStudent(null)}
+                                          className="h-8"
+                                        >
+                                          Cancel
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => setEditingStudent(record.student_id)}
+                                        className="h-8"
+                                      >
+                                        <Edit className="h-3 w-3 mr-1" />
+                                        Edit
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Present status - no edit button */}
+                                {record.status === 'present' && (
+                                  <Badge variant="outline" className="text-green-700 border-green-300">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Confirmed
+                                  </Badge>
+                                )}
+                              </>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-yellow-700 border-yellow-300">
+                                Waiting...
+                              </Badge>
+                            )}
                             </div>
                           </div>
                         );
@@ -1469,6 +1704,265 @@ const TeacherSchedule = ({ teacherData }: TeacherScheduleProps) => {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        <TabsContent value="history" className="space-y-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h2 className="text-xl sm:text-2xl font-bold">Attendance History</h2>
+              <p className="text-sm text-muted-foreground">View and edit past session attendance</p>
+            </div>
+            <Select value={selectedCourseFilter} onValueChange={setSelectedCourseFilter}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue placeholder="Select course" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Courses</SelectItem>
+                {courses.map(course => (
+                  <SelectItem key={course.id} value={course.id}>
+                    {course.course_code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {loadingHistory ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : pastSessions.length === 0 ? (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="font-medium">No attendance sessions found</p>
+                <p className="text-sm mt-2">Past sessions will appear here once you conduct classes</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {pastSessions.map((session) => (
+                <Card key={session.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => viewSessionDetails(session)}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-semibold text-lg">{session.courses?.course_name}</h3>
+                          <Badge variant="outline">{session.courses?.course_code}</Badge>
+                          {!session.is_active && (
+                            <Badge variant="secondary" className="text-xs">Closed</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-3">{session.topic || 'No topic specified'}</p>
+                        <div className="flex flex-wrap items-center gap-4 text-sm">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-4 w-4" />
+                            <span>{new Date(session.session_date).toLocaleDateString('en-US', { 
+                              weekday: 'short', 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric' 
+                            })}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            <span>{formatTime(session.start_time)} - {formatTime(session.end_time)}</span>
+                          </div>
+                          {session.room_location && (
+                            <div className="flex items-center gap-1">
+                              <MapPin className="h-4 w-4" />
+                              <span>{session.room_location}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="text-right">
+                          <div className="text-2xl font-bold">{session.total_students}</div>
+                          <div className="text-xs text-muted-foreground">Total Students</div>
+                        </div>
+                        <div className="flex gap-2 text-xs">
+                          <Badge variant="outline" >
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            {session.present_count}
+                          </Badge>
+                          <Badge variant="outline">
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            {session.late_count}
+                          </Badge>
+                          <Badge variant="outline">
+                            <XCircle className="h-3 w-3 mr-1" />
+                            {session.absent_count}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* History Dialog - Same structure as QR Dialog but for past sessions */}
+          <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="text-base sm:text-lg">
+                  {selectedHistorySession?.courses?.course_name} - Session Details
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-6">
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Session Info:</strong> {new Date(selectedHistorySession?.session_date).toLocaleDateString()} • 
+                    {' '}{formatTime(selectedHistorySession?.start_time)} - {formatTime(selectedHistorySession?.end_time)}
+                    {selectedHistorySession?.room_location && ` • ${selectedHistorySession.room_location}`}
+                  </AlertDescription>
+                </Alert>
+
+                <div>
+                  <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm sm:text-base">
+                    <Users className="h-4 w-4 sm:h-5 sm:w-5" />
+                    Attendance Records ({attendanceRecords.filter(r => r.status === 'present' || r.status === 'late').length} / {attendanceRecords.length})
+                  </h3>
+                  <div className="max-h-96 overflow-y-auto space-y-2">
+                    {attendanceRecords.length === 0 ? (
+                      <p className="text-center text-muted-foreground py-4">
+                        Loading attendance records...
+                      </p>
+                    ) : (
+                      attendanceRecords.map((record, index) => {
+                        const attendancePercentage = getAttendancePercentage(record.student_id);
+                        return (
+                          <div
+                            key={index}
+                            className={`flex items-center justify-between p-3 rounded-lg border ${getStatusColor(record.status)}`}
+                          >
+                            <div className="flex-1">
+                              <p className="font-medium text-sm sm:text-base">
+                                {record.user_profiles?.first_name} {record.user_profiles?.last_name}
+                              </p>
+                              <p className="text-xs sm:text-sm text-muted-foreground">
+                                ID: {record.user_profiles?.user_code}
+                              </p>
+                              {record.marked_at && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Marked: {new Date(record.marked_at).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right space-y-1 flex items-center gap-2 sm:gap-3">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs capitalize">
+                                    {record.status}
+                                    {record.status === 'late' && ' (0.5x)'}
+                                  </Badge>
+                                  <span className={`text-xs font-semibold ${getAttendanceColor(attendancePercentage)}`}>
+                                    {attendancePercentage}%
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Same edit buttons as live session */}
+                              {record.status === 'late' && (
+                                <div className="flex gap-2">
+                                  {editingStudent === record.student_id ? (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => updateStudentAttendance(record.student_id, 'present')}
+                                        className="h-8"
+                                      >
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Present
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setEditingStudent(null)}
+                                        className="h-8"
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setEditingStudent(record.student_id)}
+                                      className="h-8"
+                                    >
+                                      <Edit className="h-3 w-3 mr-1" />
+                                      Edit
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+
+                              {record.status === 'absent' && (
+                                <div className="flex gap-2">
+                                  {editingStudent === record.student_id ? (
+                                    <>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => updateStudentAttendance(record.student_id, 'late')}
+                                        className="h-8"
+                                      >
+                                        <AlertTriangle className="h-3 w-3 mr-1" />
+                                        Late
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => updateStudentAttendance(record.student_id, 'present')}
+                                        className="h-8"
+                                      >
+                                        <CheckCircle className="h-3 w-3 mr-1" />
+                                        Present
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => setEditingStudent(null)}
+                                        className="h-8"
+                                      >
+                                        Cancel
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setEditingStudent(record.student_id)}
+                                      className="h-8"
+                                    >
+                                      <Edit className="h-3 w-3 mr-1" />
+                                      Edit
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+
+                              {record.status === 'present' && (
+                                <Badge variant="outline" >
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Confirmed
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
     </div>

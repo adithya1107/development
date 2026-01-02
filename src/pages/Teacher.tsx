@@ -27,7 +27,8 @@ import {
   PlusCircle,
   PlusCircleIcon,
   Menu,
-  Building2Icon
+  Building2Icon,
+  Shield
 } from 'lucide-react';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
 import TeacherDashboard from '@/components/teacher/TeacherDashboard';
@@ -50,6 +51,18 @@ import TeacherExtra from '@/components/teacher/TeacherExtra';
 import ClubAdvisor from '@/components/teacher/ClubAdvisor';
 import TeacherCGPAManagement from '@/components/teacher/TeacherCGPAManagement';
 
+// Import dynamic feature loader
+import { loadUserFeatures, featuresToSidebarItems } from '@/lib/featureLoader';
+
+interface SidebarItem {
+  id: string;
+  label: string;
+  icon: any;
+  route?: string;
+  enabled?: boolean;
+  order?: number;
+}
+
 const Teacher = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [teacherData, setTeacherData] = useState(null);
@@ -61,10 +74,14 @@ const Teacher = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // NEW: Dynamic feature configuration state
+  const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([]);
+  const [availableFeatureKeys, setAvailableFeatureKeys] = useState<Set<string>>(new Set());
+  const [isLoadingFeatures, setIsLoadingFeatures] = useState(true);
+
   const notificationRef = useRef(null);
   const userMenuRef = useRef(null);
 
-  // Mock notifications data
   const [notifications, setNotifications] = useState([
     {
       id: 1,
@@ -89,22 +106,6 @@ const Teacher = () => {
       message: 'Monthly grade report is ready for review',
       time: '3 hours ago',
       read: true
-    },
-    {
-      id: 4,
-      type: 'info',
-      title: 'Parent-Teacher Meeting',
-      message: 'Scheduled for tomorrow at 2:00 PM',
-      time: '1 day ago',
-      read: true
-    },
-    {
-      id: 5,
-      type: 'warning',
-      title: 'System Maintenance',
-      message: 'Scheduled maintenance this weekend',
-      time: '2 days ago',
-      read: false
     }
   ]);
 
@@ -113,7 +114,6 @@ const Teacher = () => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      // Close mobile menu when switching to desktop
       if (!mobile) {
         setMobileMenuOpen(false);
       }
@@ -147,10 +147,37 @@ const Teacher = () => {
     }
   };
 
+  // Fallback default features
+  const getDefaultFacultyFeatures = (): SidebarItem[] => {
+    return [
+      { id: 'dashboard', label: 'Dashboard', icon: GraduationCap, enabled: true, order: 0 },
+      { id: 'schedule', label: 'Schedule', icon: Calendar, enabled: true, order: 1 },
+      { id: 'courses', label: 'Course & Quiz', icon: BookOpen, enabled: true, order: 2 },
+      { id: 'gradebook', label: 'Grading', icon: ClipboardList, enabled: true, order: 3 },
+      { id: 'cgpa', label: 'CGPA Calculator', icon: GraduationCap, enabled: true, order: 4 },
+      { id: 'extra-classes', label: 'Extra Classes', icon: PlusCircleIcon, enabled: true, order: 5 },
+      { id: 'events', label: 'Events', icon: Calendar, enabled: true, order: 6 },
+      { id: 'performance', label: 'Student Performance', icon: TrendingUp, enabled: true, order: 7 },
+      { id: 'communication', label: 'Communication', icon: MessageSquare, enabled: true, order: 8 },
+      { id: 'parent-interaction', label: 'Parent Interaction', icon: Users, enabled: true, order: 9 },
+      { id: 'absence', label: 'Absence Review', icon: Users, enabled: true, order: 10 },
+      { id: 'recognition', label: 'Recognition & Feedback', icon: Award, enabled: true, order: 11 },
+      { id: 'department', label: 'Department', icon: Building2Icon, enabled: true, order: 12 },
+      { id: 'clubs', label: 'Club Advisor', icon: PlusCircle, enabled: true, order: 13 },
+      { id: 'support', label: 'Support & Helpdesk', icon: HelpCircle, enabled: true, order: 13 },
+    ];
+  };
+
+  // NEW: Check if a feature is available
+  const isFeatureAvailable = (featureKey: string): boolean => {
+    if (isLoadingFeatures) return true;
+    if (availableFeatureKeys.size === 0) return true;
+    return availableFeatureKeys.has(featureKey);
+  };
+
   useEffect(() => {
     const checkUser = async () => {
       try {
-        // First check Supabase session
         const { data: { session }, error } = await supabase.auth.getSession();
 
         if (error) {
@@ -160,7 +187,6 @@ const Teacher = () => {
         }
 
         if (session?.user) {
-          // Get user profile from database
           const { data: profile, error: profileError } = await supabase
             .from('user_profiles')
             .select('*')
@@ -193,7 +219,6 @@ const Teacher = () => {
             email: profile.email
           });
         } else {
-          // Fallback to localStorage
           const userData = localStorage.getItem('colcord_user');
           if (!userData) {
             navigate('/');
@@ -223,6 +248,48 @@ const Teacher = () => {
 
     checkUser();
   }, [navigate]);
+
+  // NEW: Load dynamic features from database
+  useEffect(() => {
+    const loadDynamicFeatures = async () => {
+      if (!teacherData?.college_id) return;
+      
+      try {
+        setIsLoadingFeatures(true);
+        console.log('Loading features for faculty:', teacherData.user_id);
+        
+        const features = await loadUserFeatures(teacherData.college_id, 'faculty');
+        
+        if (features.length === 0) {
+          console.warn('No features configured, using defaults');
+          setSidebarItems(getDefaultFacultyFeatures());
+          setAvailableFeatureKeys(new Set(['dashboard', 'schedule', 'courses', 'gradebook', 'communication', 'support']));
+        } else {
+          const items = featuresToSidebarItems(features);
+          setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
+          
+          const featureKeys = new Set(features.map(f => f.feature_key));
+          setAvailableFeatureKeys(featureKeys);
+          
+          console.log(`Loaded ${items.length} features for faculty`);
+        }
+      } catch (error) {
+        console.error('Error loading features:', error);
+        toast({
+          title: "Error Loading Features",
+          description: "Using default features",
+          variant: "destructive"
+        });
+        setSidebarItems(getDefaultFacultyFeatures());
+      } finally {
+        setIsLoadingFeatures(false);
+      }
+    };
+
+    if (teacherData?.college_id) {
+      loadDynamicFeatures();
+    }
+  }, [teacherData?.college_id]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -277,10 +344,121 @@ const Teacher = () => {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  if (loading) {
+  // NEW: Feature Not Available Component
+  const FeatureNotAvailable = () => (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="text-center">
+        <Shield className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-foreground mb-2">Feature Not Available</h2>
+        <p className="text-muted-foreground mb-4">
+          This feature is currently disabled by your institution.
+        </p>
+        <Button onClick={() => setActiveView('dashboard')} variant="outline">
+          Return to Dashboard
+        </Button>
+      </div>
+    </div>
+  );
+
+  // MODIFIED: renderContent with feature availability checks
+  const renderContent = () => {
+    if (!isFeatureAvailable(activeView)) {
+      return <FeatureNotAvailable />;
+    }
+
+    switch (activeView) {
+      case 'dashboard':
+        return <TeacherDashboard teacherData={teacherData} onNavigate={setActiveView} />;
+      
+      case 'schedule':
+        return isFeatureAvailable('schedule')
+          ? <TeacherSchedule teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'courses':
+        return isFeatureAvailable('courses')
+          ? <TeacherCourses teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'gradebook':
+        return isFeatureAvailable('gradebook')
+          ? <GradeManager />
+          : <FeatureNotAvailable />;
+      
+      case 'cgpa':
+        return isFeatureAvailable('cgpa')
+          ? <TeacherCGPAManagement teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'extra-classes':
+        return isFeatureAvailable('extra-classes')
+          ? <TeacherExtra teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'events':
+        return isFeatureAvailable('events')
+          ? <TeacherEvents teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'clubs':
+        return isFeatureAvailable('clubs')
+          ? <ClubAdvisor teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'performance':
+        return isFeatureAvailable('performance')
+          ? <TeacherPerformance teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'communication':
+        return isFeatureAvailable('communication')
+          ? <TeacherCommunication teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'parent-interaction':
+        return isFeatureAvailable('parent-interaction')
+          ? <TeacherParentInteraction teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'absence':
+        return isFeatureAvailable('absence')
+          ? <TeacherCalendarAttendance teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'documents':
+        return isFeatureAvailable('documents')
+          ? <TeacherDocuments teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'recognition':
+        return isFeatureAvailable('recognition')
+          ? <TeacherRecognition teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      case 'department':
+        return isFeatureAvailable('department')
+          ? <TeacherDepartment teacherData={teacherData}/>
+          : <FeatureNotAvailable />;
+      
+      case 'support':
+        return isFeatureAvailable('support')
+          ? <TeacherSupport teacherData={teacherData} />
+          : <FeatureNotAvailable />;
+      
+      default:
+        return <TeacherDashboard teacherData={teacherData} />;
+    }
+  };
+
+  if (loading || isLoadingFeatures) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-role-teacher" />
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-role-teacher mx-auto" />
+          <p className="mt-4 text-muted-foreground">
+            {loading ? 'Loading faculty portal...' : 'Loading features...'}
+          </p>
+        </div>
       </div>
     );
   }
@@ -289,82 +467,15 @@ const Teacher = () => {
     return null;
   }
 
-  const sidebarItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: GraduationCap },
-    { id: 'schedule', label: 'Schedule', icon: Calendar },
-    // { id: 'attendance-tracking', label: 'Attendance Tracking', icon: ClipboardList },
-    // { id: 'enhanced-attendance', label: 'Enhanced Attendance Tracker', icon: ClipboardList },
-    { id: 'courses', label: 'Course & Quiz', icon: BookOpen },
-    { id: 'gradebook', label: 'Grading', icon: ClipboardList },
-    { id: 'cgpa', label: 'CGPA Calculator', icon: GraduationCap },
-    { id: 'extra-classes', label: 'Extra Classes', icon: PlusCircleIcon },
-    { id: 'events', label: 'Events', icon: Calendar },
-    // { id: 'club', label: 'Clubs', icon: Users },
-    { id: 'performance', label: 'Student Performance', icon: TrendingUp },
-    { id: 'communication', label: 'Communication', icon: MessageSquare },
-    { id: 'parent-interaction', label: 'Parent Interaction', icon: Users },
-    { id: 'absence', label: 'Absence Review', icon: Users },
-    // { id: 'documents', label: 'Document Management', icon: FileText },
-    { id: 'recognition', label: 'Recognition & Feedback', icon: Award },
-    { id: 'department', label: 'Department', icon: Building2Icon},
-    { id: 'support', label: 'Support & Helpdesk', icon: HelpCircle },
-  ];
-
-  const renderContent = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return <TeacherDashboard teacherData={teacherData} onNavigate={setActiveView} />;
-      case 'schedule':
-        return <TeacherSchedule teacherData={teacherData} />;
-      // case 'attendance-tracking':
-      //   return <AttendanceTracking teacherData={teacherData} />;
-      // case 'enhanced-attendance':
-      //   return <EnhancedAttendanceTracker teacherData={teacherData} />;
-      case 'courses':
-        return <TeacherCourses teacherData={teacherData} />;
-      case 'gradebook':
-        return <GradeManager />;
-      case 'cgpa':
-        return <TeacherCGPAManagement teacherData={teacherData} />;
-      case 'extra-classes':
-        return <TeacherExtra teacherData={teacherData} />;
-      case 'events':
-        return <TeacherEvents teacherData={teacherData} />;
-      case 'club':
-        return <ClubAdvisor teacherData={teacherData} />;
-      case 'performance':
-        return <TeacherPerformance teacherData={teacherData} />;
-      case 'communication':
-        return <TeacherCommunication teacherData={teacherData} />;
-      case 'parent-interaction':
-        return <TeacherParentInteraction teacherData={teacherData} />;
-      case 'absence':
-        return <TeacherCalendarAttendance teacherData={teacherData} />;
-      case 'documents':
-        return <TeacherDocuments teacherData={teacherData} />;
-      case 'recognition':
-        return <TeacherRecognition teacherData={teacherData} />;
-      case 'department':
-        return <TeacherDepartment teacherData={teacherData}/>;
-      case 'support':
-        return <TeacherSupport teacherData={teacherData} />;
-      default:
-        return <TeacherDashboard teacherData={teacherData} />;
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
-      {/* Background Grid */}
       <div className="fixed inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
 
       {/* Header */}
       <div className="fixed w-full z-[100] bg-background/95 backdrop-blur-sm border-b border-white/10">
         <div className="container mx-auto px-3 sm:px-4">
           <div className="flex justify-between items-center h-16">
-            {/* Left Section */}
             <div className="flex items-center space-x-3 sm:space-x-6">
-              {/* Sidebar Toggle */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -375,7 +486,6 @@ const Teacher = () => {
                 <Menu className="h-7 w-7" />
               </Button>
 
-              {/* Logo + Portal Name */}
               <div className="flex items-center space-x-2">
                 <h1 className="text-xl sm:text-2xl font-bold text-foreground">ColCord</h1>
                 <div className="hidden sm:flex items-center space-x-2">
@@ -388,10 +498,7 @@ const Teacher = () => {
               </div>
             </div>
 
-            {/* Right Section */}
             <div className="flex items-center space-x-2 sm:space-x-3">
-
-              {/* Notifications */}
               <div className="relative" ref={notificationRef}>
                 <Button
                   variant="ghost"
@@ -407,7 +514,6 @@ const Teacher = () => {
                   )}
                 </Button>
 
-                {/* Notifications Dropdown */}
                 {showNotifications && (
                   <div className="fixed right-3 sm:right-4 top-20 w-72 sm:w-96 bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl z-[9999]">
                     <div className="p-4 border-b border-white/10 flex items-center justify-between">
@@ -444,8 +550,9 @@ const Teacher = () => {
                         notifications.map((notification) => (
                           <div
                             key={notification.id}
-                            className={`p-4 border-b border-white/10 cursor-pointer hover:bg-white/5 transition-colors ${!notification.read ? 'bg-white/5' : ''
-                              }`}
+                            className={`p-4 border-b border-white/10 cursor-pointer hover:bg-white/5 transition-colors ${
+                              !notification.read ? 'bg-white/5' : ''
+                            }`}
                             onClick={() => markNotificationAsRead(notification.id)}
                           >
                             <div className="flex items-start space-x-3">
@@ -477,7 +584,6 @@ const Teacher = () => {
                 )}
               </div>
 
-              {/* User Menu */}
               <div className="relative" ref={userMenuRef}>
                 <Button
                   variant="ghost"
@@ -488,7 +594,6 @@ const Teacher = () => {
                   <User className="h-9 w-9 text-foreground" />
                 </Button>
 
-                {/* User Menu Dropdown */}
                 {showUserMenu && (
                   <div className="fixed right-3 sm:right-4 top-20 w-60 sm:w-64 bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl z-[9999]">
                     <div className="p-4 border-b border-white/10">
@@ -551,19 +656,30 @@ const Teacher = () => {
       </div>
 
       <div className="relative z-10 flex mt-[64px] min-h-[calc(100vh-4rem)]">
-        {/* Sidebar */}
+        {/* Sidebar - NOW USES DYNAMIC ITEMS */}
         <SidebarNavigation
           items={sidebarItems}
           activeItem={activeView}
-          onItemClick={setActiveView}
+          onItemClick={(item) => {
+            if (isFeatureAvailable(item)) {
+              setActiveView(item);
+              if (isMobile) {
+                setMobileMenuOpen(false);
+              }
+            } else {
+              toast({
+                title: "Feature Not Available",
+                description: "This feature is not currently enabled.",
+                variant: "destructive"
+              });
+            }
+          }}
           userType="faculty"
           collapsed={sidebarCollapsed}
           mobileOpen={mobileMenuOpen}
           onMobileClose={() => setMobileMenuOpen(false)}
         />
 
-
-        {/* Main Content */}
         <div className={cn(
           "flex-1 w-full min-w-0 transition-all duration-300 ease-in-out",
           "px-4 py-4 sm:px-12 sm:py-6 mx-auto",
@@ -573,7 +689,6 @@ const Teacher = () => {
         </div>
       </div>
 
-      {/* Mobile Overlay */}
       {isMobile && !sidebarCollapsed && (
         <div
           className="fixed inset-0 bg-black/50 z-[90] md:hidden"

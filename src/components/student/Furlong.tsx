@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
 const Furlong = () => {
   const [currentView, setCurrentView] = useState('discover');
@@ -28,7 +29,8 @@ const Furlong = () => {
   const [locationEnabled, setLocationEnabled] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const chatEndRef = useRef(null);
-  const channelRef = useRef(null);
+  const chatChannelRef = useRef<RealtimeChannel | null>(null);
+  const activitiesChannelRef = useRef<RealtimeChannel | null>(null);
   const { toast } = useToast();
 
   const [newActivity, setNewActivity] = useState({
@@ -57,14 +59,24 @@ const Furlong = () => {
   useEffect(() => {
     initializeFurlong();
     const interval = setInterval(() => checkAndDeleteExpiredActivities(), 300000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      cleanupSubscriptions();
+    };
   }, []);
 
   useEffect(() => {
     if (studentData && userLocation && locationEnabled) {
       console.log('Loading activities with:', { userLocation, studentData, filterType });
       loadActivities();
+      subscribeToActivities();
     }
+    return () => {
+      if (activitiesChannelRef.current) {
+        supabase.removeChannel(activitiesChannelRef.current);
+        activitiesChannelRef.current = null;
+      }
+    };
   }, [studentData, userLocation, filterType, locationEnabled]);
 
   useEffect(() => {
@@ -72,13 +84,162 @@ const Furlong = () => {
       loadChatMessages();
       subscribeToChat();
       return () => {
-        if (channelRef.current) {
-          supabase.removeChannel(channelRef.current);
-          channelRef.current = null;
+        if (chatChannelRef.current) {
+          supabase.removeChannel(chatChannelRef.current);
+          chatChannelRef.current = null;
         }
       };
     }
   }, [currentView, selectedActivity]);
+
+  const cleanupSubscriptions = () => {
+    if (chatChannelRef.current) {
+      supabase.removeChannel(chatChannelRef.current);
+      chatChannelRef.current = null;
+    }
+    if (activitiesChannelRef.current) {
+      supabase.removeChannel(activitiesChannelRef.current);
+      activitiesChannelRef.current = null;
+    }
+  };
+
+  const subscribeToActivities = () => {
+    if (!studentData?.college_id) return;
+
+    activitiesChannelRef.current = supabase
+      .channel('furlong-activities-changes')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'furlong_activities',
+        filter: `college_id=eq.${studentData.college_id}`
+      }, (payload) => {
+        console.log('New activity created:', payload.new);
+        handleActivityInsert(payload.new);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'furlong_activities',
+        filter: `college_id=eq.${studentData.college_id}`
+      }, (payload) => {
+        console.log('Activity updated:', payload.new);
+        handleActivityUpdate(payload.new);
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'furlong_activities',
+        filter: `college_id=eq.${studentData.college_id}`
+      }, (payload) => {
+        console.log('Activity deleted:', payload.old);
+        handleActivityDelete(payload.old);
+      })
+      .subscribe((status) => {
+        console.log('Activities subscription status:', status);
+      });
+  };
+
+  const handleActivityInsert = async (newActivity) => {
+    // Check if activity is within range
+    if (userLocation && newActivity.meeting_lat && newActivity.meeting_lng) {
+      const distance = calculateDistance(
+        userLocation.lat,
+        userLocation.lng,
+        newActivity.meeting_lat,
+        newActivity.meeting_lng
+      );
+      
+      if (distance <= 10) { // 10km radius
+        await loadActivities(); // Reload to get complete data with distance
+        
+        // Show notification if not creator
+        if (newActivity.creator_id !== studentData?.id) {
+          toast({
+            title: 'New Activity Nearby!',
+            description: `${newActivity.title} - ${distance.toFixed(1)}km away`,
+            duration: 5000,
+          });
+        }
+      }
+    }
+  };
+
+  const handleActivityUpdate = (updatedActivity) => {
+    setActivities(prev => 
+      prev.map(activity => 
+        activity.id === updatedActivity.id 
+          ? { ...activity, ...updatedActivity }
+          : activity
+      )
+    );
+
+    // Update selected activity if it's the one being updated
+    if (selectedActivity?.id === updatedActivity.id) {
+      setSelectedActivity(prev => ({ ...prev, ...updatedActivity }));
+    }
+  };
+
+  const handleActivityDelete = (deletedActivity) => {
+    setActivities(prev => prev.filter(activity => activity.id !== deletedActivity.id));
+    
+    // If viewing deleted activity, return to discover
+    if (selectedActivity?.id === deletedActivity.id) {
+      setSelectedActivity(null);
+      setMyAnonymousName(null);
+      setChatMessages([]);
+      setCurrentView('discover');
+      toast({
+        title: 'Activity Ended',
+        description: 'This activity has been deleted',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const subscribeToChat = () => {
+    if (!selectedActivity) return;
+
+    chatChannelRef.current = supabase
+      .channel(`furlong_chat_${selectedActivity.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'furlong_chat_messages',
+        filter: `activity_id=eq.${selectedActivity.id}`
+      }, (payload) => {
+        console.log('New message:', payload.new);
+        setChatMessages(prev => {
+          // Avoid duplicates
+          if (prev.some(msg => msg.id === payload.new.id)) return prev;
+          return [...prev, payload.new];
+        });
+        scrollToBottom();
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'furlong_chat_messages',
+        filter: `activity_id=eq.${selectedActivity.id}`
+      }, (payload) => {
+        console.log('Message updated:', payload.new);
+        setChatMessages(prev =>
+          prev.map(msg => msg.id === payload.new.id ? payload.new : msg)
+        );
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'furlong_chat_messages',
+        filter: `activity_id=eq.${selectedActivity.id}`
+      }, (payload) => {
+        console.log('Message deleted:', payload.old);
+        setChatMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
+      })
+      .subscribe((status) => {
+        console.log('Chat subscription status:', status);
+      });
+  };
 
   const initializeFurlong = async () => {
     setLoading(true);
@@ -188,7 +349,7 @@ const Furlong = () => {
       setActivities(filtered);
     } catch (error) {
       console.error('Error loading activities:', error);
-      toast({ title: 'Error Loading Activities', description: error.message || 'Failed to load activities. The get_nearby_activities function may be missing.', variant: 'destructive' });
+      toast({ title: 'Error Loading Activities', description: error.message || 'Failed to load activities', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -209,7 +370,6 @@ const Furlong = () => {
         await supabase.from('furlong_participants').delete().in('activity_id', expiredIds);
         await supabase.from('furlong_activities').delete().in('id', expiredIds);
         console.log(`Deleted ${expiredActivities.length} expired activities`);
-        if (currentView === 'discover' && userLocation && studentData) await loadActivities();
       }
     } catch (error) {
       console.error('Error in auto-delete:', error);
@@ -230,22 +390,6 @@ const Furlong = () => {
     } catch (error) {
       console.error('Error loading messages:', error);
     }
-  };
-
-  const subscribeToChat = () => {
-    if (!selectedActivity) return;
-    channelRef.current = supabase
-      .channel(`furlong_chat_${selectedActivity.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'furlong_chat_messages',
-        filter: `activity_id=eq.${selectedActivity.id}`
-      }, (payload) => {
-        setChatMessages(prev => [...prev, payload.new]);
-        scrollToBottom();
-      })
-      .subscribe();
   };
 
   const handleCreateActivity = async () => {
@@ -299,7 +443,7 @@ const Furlong = () => {
         meeting_lat: null, meeting_lng: null, scheduled_time: '', max_participants: 10, notification_radius_km: 5
       });
       setCurrentView('discover');
-      await loadActivities();
+      // Activity will be added via real-time subscription
     } catch (error) {
       console.error('Error creating activity:', error);
       toast({ title: 'Error', description: error.message || 'Failed to create activity', variant: 'destructive' });
@@ -384,6 +528,10 @@ const Furlong = () => {
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() || !myAnonymousName) return;
+    
+    const messageText = messageInput.trim();
+    setMessageInput(''); // Clear input immediately for better UX
+
     try {
       const { error } = await supabase
         .from('furlong_chat_messages')
@@ -391,13 +539,14 @@ const Furlong = () => {
           activity_id: selectedActivity.id,
           sender_id: studentData.id,
           anonymous_name: myAnonymousName,
-          message_text: messageInput,
+          message_text: messageText,
           message_type: 'text'
         });
       if (error) throw error;
-      setMessageInput('');
+      // Message will be added via real-time subscription
     } catch (error) {
       console.error('Error sending message:', error);
+      setMessageInput(messageText); // Restore message on error
       toast({ title: 'Error', description: 'Failed to send message', variant: 'destructive' });
     }
   };
@@ -440,11 +589,7 @@ const Furlong = () => {
       await supabase.from('furlong_activities').delete().eq('id', selectedActivity.id);
       toast({ title: 'Deleted', description: 'Activity deleted successfully' });
       setShowDeleteConfirm(false);
-      setSelectedActivity(null);
-      setMyAnonymousName(null);
-      setChatMessages([]);
-      setCurrentView('discover');
-      await loadActivities();
+      // UI will update via real-time subscription
     } catch (error) {
       console.error('Error deleting:', error);
       toast({ title: 'Error', description: 'Failed to delete activity', variant: 'destructive' });
@@ -514,6 +659,9 @@ const Furlong = () => {
   const getActivityIcon = (type) => activityTypes.find(a => a.value === type)?.icon || Sparkles;
   const getActivityColor = (type) => activityTypes.find(a => a.value === type)?.color || 'bg-gray-500';
   const isCreator = selectedActivity?.creator_id === studentData?.id;
+
+  // Render functions continue from original (discover, create, chat views)
+  // Due to length, I'm including the complete render logic inline...
 
   const renderDiscover = () => (
     <div className="space-y-4">
@@ -647,7 +795,6 @@ const Furlong = () => {
             </div>
           </div>
 
-          // Add this to complete the renderCreate function:
           <div className="space-y-2">
             <label className="text-sm font-medium">Title *</label>
             <Input placeholder="e.g., Evening Cycle Ride" value={newActivity.title} onChange={(e) => setNewActivity({ ...newActivity, title: e.target.value })} />
@@ -699,7 +846,16 @@ const Furlong = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => { if (channelRef.current) supabase.removeChannel(channelRef.current); setSelectedActivity(null); setMyAnonymousName(null); setChatMessages([]); setCurrentView('discover'); }}>
+          <Button variant="outline" onClick={() => { 
+            if (chatChannelRef.current) {
+              supabase.removeChannel(chatChannelRef.current);
+              chatChannelRef.current = null;
+            }
+            setSelectedActivity(null); 
+            setMyAnonymousName(null); 
+            setChatMessages([]); 
+            setCurrentView('discover'); 
+          }}>
             <X className="w-4 h-4 mr-2" />Leave
           </Button>
           {isCreator && <Button variant="destructive" onClick={() => setShowDeleteConfirm(true)}><Trash2 className="w-4 h-4 mr-2" />Delete</Button>}

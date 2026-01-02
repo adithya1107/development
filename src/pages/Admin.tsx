@@ -33,12 +33,16 @@ import CourseManagement from '../components/admin/CourseManagement';
 import EventManagement from '../components/admin/EventManagement';
 import FinanceManagement from '../components/admin/FinanceManagement';
 import FacilityManagement from '../components/admin/FacilityManagement';
+import FeatureConfig from '@/components/admin/FeatureConfig';
 import RoleManagement from '../components/admin/RoleManagement';
 import AuditLogs from '../components/admin/AuditLogs';
 import SystemSettings from '../components/admin/SystemSettings';
 import StudentEnrollmentManagement from '@/components/teacher/StudentEnrollmentManagement';
 import TimetableManagement from '@/components/admin/TimetableManagement';
 import DepartmentManagement from '@/components/admin/DepartmentManagement';
+
+// Import dynamic feature loader
+import { loadUserFeatures, featuresToSidebarItems } from '@/lib/featureLoader';
 
 interface TagFeature {
   feature_key: string;
@@ -48,7 +52,16 @@ interface TagFeature {
   display_order: number;
 }
 
-// Define feature mappings for each tag
+interface SidebarItem {
+  id: string;
+  label: string;
+  icon: any;
+  route?: string;
+  enabled?: boolean;
+  order?: number;
+}
+
+// Define feature mappings for each tag (fallback only)
 const TAG_FEATURE_MAP: Record<string, TagFeature[]> = {
   super_admin: [
     { feature_key: 'dashboard', feature_name: 'Dashboard', feature_route: '/admin/dashboard', icon: 'Activity', display_order: 0 },
@@ -56,10 +69,11 @@ const TAG_FEATURE_MAP: Record<string, TagFeature[]> = {
     { feature_key: 'department', feature_name: 'Department Management', feature_route: '/admin/department', icon: 'Building', display_order: 1 },
     { feature_key: 'courses', feature_name: 'Course Management', feature_route: '/admin/courses', icon: 'BookOpen', display_order: 1.5 },
     { feature_key: 'enrollment', feature_name: 'Enrollment Management', feature_route: '/admin/enrollment', icon: 'Users', display_order: 2 },
-    { feature_key: 'timetable', feature_name: 'Timetable Management', feature_route: '/admin/timetable', icon: 'Time', display_order: 2.5 },
+    { feature_key: 'timetable', feature_name: 'Timetable Management', feature_route: '/admin/timetable', icon: 'Calendar', display_order: 2.5 },
     { feature_key: 'events', feature_name: 'Event Management', feature_route: '/admin/events', icon: 'Calendar', display_order: 3 },
     { feature_key: 'finance', feature_name: 'Finance Management', feature_route: '/admin/finance', icon: 'DollarSign', display_order: 4 },
     { feature_key: 'facilities', feature_name: 'Facility Management', feature_route: '/admin/facilities', icon: 'Building', display_order: 5 },
+    { feature_key: 'feature_config', feature_name: 'Feature Configuration', feature_route: '/admin/feature-config', icon: 'Settings', display_order: 5.5 },
     { feature_key: 'roles', feature_name: 'Role Management', feature_route: '/admin/roles', icon: 'Shield', display_order: 6 },
     { feature_key: 'audit', feature_name: 'Audit Logs', feature_route: '/admin/audit', icon: 'FileText', display_order: 7 },
     { feature_key: 'system', feature_name: 'System Settings', feature_route: '/admin/system', icon: 'Settings', display_order: 8 }
@@ -77,7 +91,7 @@ const TAG_FEATURE_MAP: Record<string, TagFeature[]> = {
     { feature_key: 'department', feature_name: 'Department Management', feature_route: '/admin/department', icon: 'Building', display_order: 1 },
     { feature_key: 'courses', feature_name: 'Course Management', feature_route: '/admin/courses', icon: 'BookOpen', display_order: 1.5 },
     { feature_key: 'enrollment', feature_name: 'Enrollment Management', feature_route: '/admin/enrollment', icon: 'Users', display_order: 2 },
-    { feature_key: 'timetable', feature_name: 'Timetable Management', feature_route: '/admin/timetable', icon: 'Time', display_order: 2.5 }
+    { feature_key: 'timetable', feature_name: 'Timetable Management', feature_route: '/admin/timetable', icon: 'Calendar', display_order: 2.5 }
   ],
   event_admin: [
     { feature_key: 'dashboard', feature_name: 'Dashboard', feature_route: '/admin/dashboard', icon: 'Activity', display_order: 0 },
@@ -104,11 +118,16 @@ const Admin = () => {
   const [userProfile, setUserProfile] = useState(null);
   const [adminRoles, setAdminRoles] = useState([]);
   const [userTags, setUserTags] = useState<string[]>([]);
-  const [availableFeatures, setAvailableFeatures] = useState<TagFeature[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // NEW: Dynamic feature configuration state
+  const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([]);
+  const [availableFeatureKeys, setAvailableFeatureKeys] = useState<Set<string>>(new Set());
+  const [isLoadingFeatures, setIsLoadingFeatures] = useState(true);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   
   const notificationRef = useRef(null);
   const userMenuRef = useRef(null);
@@ -199,7 +218,6 @@ const Admin = () => {
   };
 
   const buildFeaturesFromTags = (tags: string[]) => {
-    
     const featuresMap = new Map<string, TagFeature>();
     
     // Always add dashboard first
@@ -229,6 +247,80 @@ const Admin = () => {
     );
     return features;
   };
+
+  // NEW: Load dynamic features from database
+  useEffect(() => {
+    const loadDynamicFeatures = async () => {
+      if (!userProfile?.college_id) return;
+      
+      try {
+        setIsLoadingFeatures(true);
+        console.log('Loading features for admin:', userProfile.id);
+        
+        // Check if user is super admin
+        const isSuper = userProfile.is_super_admin || false;
+        setIsSuperAdmin(isSuper);
+        
+        // Load features from database
+        const features = await loadUserFeatures(userProfile.college_id, 'admin');
+        
+        if (features.length === 0) {
+          // No features configured - use tag-based or fallback features
+          console.warn('No features configured, using tag-based features');
+          const tagFeatures = buildFeaturesFromTags(userTags);
+          const items = tagFeatures.map(f => ({
+            id: f.feature_key,
+            label: f.feature_name,
+            icon: getIconComponent(f.icon),
+            enabled: true,
+            order: f.display_order
+          }));
+          setSidebarItems(items);
+          setAvailableFeatureKeys(new Set(tagFeatures.map(f => f.feature_key)));
+        } else {
+          // Convert features to sidebar items
+          const items = featuresToSidebarItems(features);
+          
+          // Super admins ALWAYS have access to feature_config
+          if (isSuper && !items.find(i => i.id === 'feature_config')) {
+            items.push({
+              id: 'feature_config',
+              label: 'Feature Configuration',
+              icon: Settings,
+              enabled: true,
+              order: 5.5
+            });
+          }
+          
+          setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
+          
+          const featureKeys = new Set(features.map(f => f.feature_key));
+          if (isSuper) featureKeys.add('feature_config');
+          setAvailableFeatureKeys(featureKeys);
+          
+          console.log(`Loaded ${items.length} features for admin`);
+        }
+      } catch (error) {
+        console.error('Error loading features:', error);
+        // Fall back to tag-based features
+        const tagFeatures = buildFeaturesFromTags(userTags);
+        const items = tagFeatures.map(f => ({
+          id: f.feature_key,
+          label: f.feature_name,
+          icon: getIconComponent(f.icon),
+          enabled: true,
+          order: f.display_order
+        }));
+        setSidebarItems(items);
+      } finally {
+        setIsLoadingFeatures(false);
+      }
+    };
+
+    if (userProfile?.college_id && userTags.length > 0) {
+      loadDynamicFeatures();
+    }
+  }, [userProfile?.college_id, userTags]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -293,19 +385,8 @@ const Admin = () => {
               assigned_at: ta.assigned_at
             }));
             setAdminRoles(roles);
-
-            // Build features from tags
-            const features = buildFeaturesFromTags(tags);
-            setAvailableFeatures(features);
           } else {
             setAdminRoles([]);
-            setAvailableFeatures([{
-              feature_key: 'dashboard',
-              feature_name: 'Dashboard',
-              feature_route: '/admin/dashboard',
-              icon: 'Activity',
-              display_order: 0
-            }]);
           }
         } else {
           // Fallback to localStorage for development
@@ -327,7 +408,8 @@ const Admin = () => {
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 college_id: parsedSession.college_id || '',
-                hierarchy_level: parsedSession.user_type || 'admin'
+                hierarchy_level: parsedSession.user_type || 'admin',
+                is_super_admin: true // Assume super admin for dev
               };
               setUserProfile(profile);
               
@@ -342,9 +424,6 @@ const Admin = () => {
                 permissions: { all: true },
                 assigned_at: new Date().toISOString()
               }]);
-
-              const features = buildFeaturesFromTags(devTags);
-              setAvailableFeatures(features);
             } else {
               navigate('/');
             }
@@ -369,15 +448,25 @@ const Admin = () => {
     navigate('/');
   };
 
-  const handleNavigationChange = (view) => {
-    const hasAccess = availableFeatures.some(f => f.feature_key === view);
-    const isSuperAdmin = userTags.includes('super_admin');
+  // NEW: Check if a feature is available
+  const isFeatureAvailable = (featureKey: string): boolean => {
+    // Super admins have access to everything
+    if (isSuperAdmin) return true;
     
-    if (isSuperAdmin || hasAccess) {
+    if (isLoadingFeatures) return true;
+    if (availableFeatureKeys.size === 0) return true;
+    return availableFeatureKeys.has(featureKey);
+  };
+
+  const handleNavigationChange = (view) => {
+    if (isFeatureAvailable(view)) {
       setActiveView(view);
       if (isMobile) {
         setMobileMenuOpen(false);
       }
+    } else {
+      // Feature not available
+      return;
     }
   };
 
@@ -421,12 +510,106 @@ const Admin = () => {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  if (isLoading) {
+  // NEW: Feature Not Available Component
+  const FeatureNotAvailable = () => (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="text-center">
+        <Shield className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+        <h2 className="text-2xl font-semibold text-foreground mb-2">Access Denied</h2>
+        <p className="text-muted-foreground mb-4">
+          You don't have permission to access this feature.
+        </p>
+        <Button onClick={() => setActiveView('dashboard')}>
+          Return to Dashboard
+        </Button>
+      </div>
+    </div>
+  );
+
+  // MODIFIED: renderContent with feature availability checks
+  const renderContent = () => {
+    // Check if current view is available
+    if (!isFeatureAvailable(activeView)) {
+      return <FeatureNotAvailable />;
+    }
+
+    switch (activeView) {
+      case 'dashboard':
+        return <AdminDashboard sessionData={sessionData} onNavigate={handleNavigationChange} />;
+      
+      case 'users':
+        return isFeatureAvailable('users')
+          ? <EnhancedUserManagement userProfile={userProfile} adminRoles={adminRoles} />
+          : <FeatureNotAvailable />;
+      
+      case 'department':
+        return isFeatureAvailable('department')
+          ? <DepartmentManagement userProfile={userProfile} />
+          : <FeatureNotAvailable />;
+      
+      case 'courses':
+        return isFeatureAvailable('courses')
+          ? <CourseManagement userProfile={userProfile} />
+          : <FeatureNotAvailable />;
+      
+      case 'enrollment':
+        return isFeatureAvailable('enrollment')
+          ? <StudentEnrollmentManagement teacherData={sessionData} />
+          : <FeatureNotAvailable />;
+      
+      case 'timetable':
+        return isFeatureAvailable('timetable')
+          ? <TimetableManagement userProfile={userProfile} />
+          : <FeatureNotAvailable />;
+      
+      case 'events':
+        return isFeatureAvailable('events')
+          ? <EventManagement userProfile={userProfile} />
+          : <FeatureNotAvailable />;
+      
+      case 'finance':
+        return isFeatureAvailable('finance')
+          ? <FinanceManagement userProfile={userProfile} />
+          : <FeatureNotAvailable />;
+      
+      case 'facilities':
+        return isFeatureAvailable('facilities')
+          ? <FacilityManagement userProfile={userProfile} />
+          : <FeatureNotAvailable />;
+      
+      case 'feature_config':
+        return (isSuperAdmin || isFeatureAvailable('feature_config'))
+          ? <FeatureConfig userProfile={userProfile} />
+          : <FeatureNotAvailable />;
+      
+      case 'roles':
+        return isFeatureAvailable('roles')
+          ? <RoleManagement userProfile={userProfile} adminRoles={adminRoles} />
+          : <FeatureNotAvailable />;
+      
+      case 'audit':
+        return isFeatureAvailable('audit')
+          ? <AuditLogs userProfile={userProfile} adminRoles={adminRoles} />
+          : <FeatureNotAvailable />;
+      
+      case 'system':
+        return isFeatureAvailable('system')
+          ? <SystemSettings userProfile={userProfile} />
+          : <FeatureNotAvailable />;
+      
+      default:
+        return <AdminDashboard sessionData={sessionData} onNavigate={handleNavigationChange} />;
+    }
+  };
+
+  if (isLoading || isLoadingFeatures) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading admin dashboard...</p>
+          <p className="mt-2 text-gray-600">
+            {isLoading ? 'Loading admin dashboard...' : 'Loading features...'}
+          </p>
         </div>
       </div>
     );
@@ -441,64 +624,6 @@ const Admin = () => {
       </div>
     );
   }
-
-  const sidebarItems = availableFeatures.map(feature => ({
-    id: feature.feature_key,
-    label: feature.feature_name,
-    icon: getIconComponent(feature.icon)
-  }));
-
-  const renderContent = () => {
-    const hasAccess = availableFeatures.some(f => f.feature_key === activeView);
-    const isSuperAdmin = userTags.includes('super_admin');
-    
-    if (!isSuperAdmin && !hasAccess) {
-      return (
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center">
-            <Shield className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h2 className="text-2xl font-semibold text-foreground mb-2">Access Denied</h2>
-            <p className="text-muted-foreground">You don't have permission to access this feature.</p>
-            <Button 
-              onClick={() => setActiveView('dashboard')} 
-              className="mt-4"
-            >
-              Return to Dashboard
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    switch (activeView) {
-      case 'dashboard':
-        return <AdminDashboard sessionData={sessionData} onNavigate={handleNavigationChange} />;
-      case 'users':
-        return <EnhancedUserManagement userProfile={userProfile} adminRoles={adminRoles} />;
-      case 'department':
-        return <DepartmentManagement userProfile={userProfile} />;
-      case 'courses':
-        return <CourseManagement userProfile={userProfile} />;
-      case 'enrollment':
-        return <StudentEnrollmentManagement teacherData={sessionData} />;
-      case 'timetable':
-        return <TimetableManagement userProfile={userProfile} />;
-      case 'events':
-        return <EventManagement userProfile={userProfile} />;
-      case 'finance':
-        return <FinanceManagement userProfile={userProfile} />;
-      case 'facilities':
-        return <FacilityManagement userProfile={userProfile} />;
-      case 'roles':
-        return <RoleManagement userProfile={userProfile} adminRoles={adminRoles} />;
-      case 'audit':
-        return <AuditLogs userProfile={userProfile} adminRoles={adminRoles} />;
-      case 'system':
-        return <SystemSettings userProfile={userProfile} />;
-      default:
-        return <AdminDashboard sessionData={sessionData} onNavigate={handleNavigationChange} />;
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -664,6 +789,13 @@ const Admin = () => {
                           </div>
                         </div>
                       )}
+                      {isSuperAdmin && (
+                        <div className="mt-3 pt-3 border-t border-white/10">
+                          <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs">
+                            Super Admin
+                          </Badge>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="p-2">
@@ -686,6 +818,7 @@ const Admin = () => {
 
       {/* Main Layout */}
       <div className="relative z-10 flex mt-[64px] min-h-[calc(100vh-4rem)]">
+        {/* Sidebar - NOW USES DYNAMIC ITEMS */}
         <SidebarNavigation
           items={sidebarItems}
           activeItem={activeView}

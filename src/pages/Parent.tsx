@@ -23,7 +23,8 @@ import {
   GraduationCap,
   DollarSign,
   Clock,
-  Menu
+  Menu,
+  Shield
 } from 'lucide-react';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
 import ParentDashboard from '@/components/parent/ParentDashboard';
@@ -34,6 +35,18 @@ import ParentCommunication from '@/components/parent/ParentCommunication';
 import EventsMeetings from '@/components/parent/EventsMeetings';
 import { supabase } from '@/integrations/supabase/client';
 import ParentCommunicationHub from '@/components/parent/ParentCommunicationHub';
+
+// Import dynamic feature loader
+import { loadUserFeatures, featuresToSidebarItems } from '@/lib/featureLoader';
+
+interface SidebarItem {
+  id: string;
+  label: string;
+  icon: any;
+  route?: string;
+  enabled?: boolean;
+  order?: number;
+}
 
 const Parent = () => {
   const [activeView, setActiveView] = useState('dashboard');
@@ -47,10 +60,14 @@ const Parent = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const hasCheckedUserRef = useRef(false);
 
+  // NEW: Dynamic feature configuration state
+  const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([]);
+  const [availableFeatureKeys, setAvailableFeatureKeys] = useState<Set<string>>(new Set());
+  const [isLoadingFeatures, setIsLoadingFeatures] = useState(true);
+
   const notificationRef = useRef(null);
   const userMenuRef = useRef(null);
 
-  // Mock notifications for parents
   const [notifications, setNotifications] = useState([
     {
       id: 1,
@@ -75,31 +92,33 @@ const Parent = () => {
       message: 'Mid-semester exam results are now available',
       time: '2 days ago',
       read: false
-    },
-    {
-      id: 4,
-      type: 'warning',
-      title: 'Low Attendance Alert',
-      message: 'Your child\'s attendance has dropped below 75%',
-      time: '3 days ago',
-      read: true
-    },
-    {
-      id: 5,
-      type: 'info',
-      title: 'School Event',
-      message: 'Annual sports day event scheduled for next month',
-      time: '1 week ago',
-      read: true
     }
   ]);
+
+  // Fallback default features
+  const getDefaultParentFeatures = (): SidebarItem[] => {
+    return [
+      { id: 'dashboard', label: 'Dashboard', icon: User, enabled: true, order: 0 },
+      { id: 'academic', label: 'Academic Progress', icon: TrendingUp, enabled: true, order: 1 },
+      { id: 'attendance', label: 'Attendance', icon: Calendar, enabled: true, order: 2 },
+      { id: 'payments', label: 'Payments & Fees', icon: CreditCard, enabled: true, order: 3 },
+      { id: 'communication', label: 'Communication', icon: MessageSquare, enabled: true, order: 4 },
+      { id: 'events', label: 'Events & Meetings', icon: Users, enabled: true, order: 5 },
+    ];
+  };
+
+  // NEW: Check if a feature is available
+  const isFeatureAvailable = (featureKey: string): boolean => {
+    if (isLoadingFeatures) return true;
+    if (availableFeatureKeys.size === 0) return true;
+    return availableFeatureKeys.has(featureKey);
+  };
 
   // Check for mobile view
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      // Close mobile menu when switching to desktop
       if (!mobile) {
         setMobileMenuOpen(false);
       }
@@ -158,7 +177,6 @@ const Parent = () => {
   };
 
   useEffect(() => {
-    // Prevent multiple checks
     if (hasCheckedUserRef.current) {
       return;
     }
@@ -166,7 +184,6 @@ const Parent = () => {
 
     const checkUser = async () => {
       try {
-        // Use sessionStorage consistently
         const userData = sessionStorage.getItem('colcord_user');
         if (!userData) {
           navigate('/');
@@ -194,7 +211,49 @@ const Parent = () => {
     };
 
     checkUser();
-  }, []); // Empty dependency array - only run once
+  }, []);
+
+  // NEW: Load dynamic features from database
+  useEffect(() => {
+    const loadDynamicFeatures = async () => {
+      if (!user?.college_id) return;
+      
+      try {
+        setIsLoadingFeatures(true);
+        console.log('Loading features for parent:', user.user_id);
+        
+        const features = await loadUserFeatures(user.college_id, 'parent');
+        
+        if (features.length === 0) {
+          console.warn('No features configured, using defaults');
+          setSidebarItems(getDefaultParentFeatures());
+          setAvailableFeatureKeys(new Set(['dashboard', 'academic', 'attendance', 'payments', 'communication', 'events']));
+        } else {
+          const items = featuresToSidebarItems(features);
+          setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
+          
+          const featureKeys = new Set(features.map(f => f.feature_key));
+          setAvailableFeatureKeys(featureKeys);
+          
+          console.log(`Loaded ${items.length} features for parent`);
+        }
+      } catch (error) {
+        console.error('Error loading features:', error);
+        toast({
+          title: "Error Loading Features",
+          description: "Using default features",
+          variant: "destructive"
+        });
+        setSidebarItems(getDefaultParentFeatures());
+      } finally {
+        setIsLoadingFeatures(false);
+      }
+    };
+
+    if (user?.college_id) {
+      loadDynamicFeatures();
+    }
+  }, [user?.college_id]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -232,10 +291,71 @@ const Parent = () => {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  if (loading) {
+  // NEW: Feature Not Available Component
+  const FeatureNotAvailable = () => (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="text-center">
+        <Shield className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-foreground mb-2">Feature Not Available</h2>
+        <p className="text-muted-foreground mb-4">
+          This feature is currently disabled by your institution.
+        </p>
+        <Button onClick={() => setActiveView('dashboard')} variant="outline">
+          Return to Dashboard
+        </Button>
+      </div>
+    </div>
+  );
+
+  // MODIFIED: renderContent with feature availability checks
+  const renderContent = () => {
+    if (!isFeatureAvailable(activeView)) {
+      return <FeatureNotAvailable />;
+    }
+
+    switch (activeView) {
+      case 'dashboard':
+        return <ParentDashboard user={user} />;
+      
+      case 'academic':
+        return isFeatureAvailable('academic')
+          ? <AcademicProgress user={user} />
+          : <FeatureNotAvailable />;
+      
+      case 'attendance':
+        return isFeatureAvailable('attendance')
+          ? <AttendanceTracking user={user} />
+          : <FeatureNotAvailable />;
+      
+      case 'payments':
+        return isFeatureAvailable('payments')
+          ? <PaymentsFees user={user} />
+          : <FeatureNotAvailable />;
+      
+      case 'communication':
+        return isFeatureAvailable('communication')
+          ? <ParentCommunicationHub parentData={user} />
+          : <FeatureNotAvailable />;
+      
+      case 'events':
+        return isFeatureAvailable('events')
+          ? <EventsMeetings user={user} />
+          : <FeatureNotAvailable />;
+      
+      default:
+        return <ParentDashboard user={user} />;
+    }
+  };
+
+  if (loading || isLoadingFeatures) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-role-parent"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-role-parent"></div>
+          <p className="mt-4 text-muted-foreground">
+            {loading ? 'Loading parent portal...' : 'Loading features...'}
+          </p>
+        </div>
       </div>
     );
   }
@@ -244,46 +364,15 @@ const Parent = () => {
     return null;
   }
 
-  const sidebarItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: User },
-    { id: 'academic', label: 'Academic Progress', icon: TrendingUp },
-    { id: 'attendance', label: 'Attendance', icon: Calendar },
-    { id: 'payments', label: 'Payments & Fees', icon: CreditCard },
-    { id: 'communication', label: 'Communication', icon: MessageSquare },
-    { id: 'events', label: 'Events & Meetings', icon: Users },
-  ];
-
-  const renderContent = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return <ParentDashboard user={user} />;
-      case 'academic':
-        return <AcademicProgress user={user} />;
-      case 'attendance':
-        return <AttendanceTracking user={user} />;
-      case 'payments':
-        return <PaymentsFees user={user} />;
-      case 'communication':
-        return <ParentCommunicationHub parentData={user} />;
-      case 'events':
-        return <EventsMeetings user={user} />;
-      default:
-        return <ParentDashboard user={user} />;
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
-      {/* Background Grid */}
       <div className="fixed inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
 
       {/* Header */}
       <div className="fixed w-full z-[100] bg-background/95 backdrop-blur-sm border-b border-white/10">
         <div className="container mx-auto px-3 sm:px-4">
           <div className="flex justify-between items-center h-16">
-            {/* Left Section */}
             <div className="flex items-center space-x-3 sm:space-x-6">
-              {/* Sidebar Toggle */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -294,7 +383,6 @@ const Parent = () => {
                 <Menu className="h-7 w-7" />
               </Button>
 
-              {/* Logo + Portal Name */}
               <div className="flex items-center space-x-2">
                 <h1 className="text-xl sm:text-2xl font-bold text-foreground">ColCord</h1>
                 <div className="hidden sm:flex items-center space-x-2">
@@ -308,7 +396,6 @@ const Parent = () => {
             </div>
 
             <div className="flex items-center space-x-2 sm:space-x-3">
-              {/* Notifications Dropdown */}
               <div className="relative" ref={notificationRef}>
                 <Button
                   variant="ghost"
@@ -324,7 +411,6 @@ const Parent = () => {
                   )}
                 </Button>
 
-                {/* Notifications Panel */}
                 {showNotifications && (
                   <div className="fixed right-3 sm:right-4 top-20 w-72 sm:w-96 bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl z-[9999]">
                     <div className="p-4 border-b border-white/10 flex items-center justify-between">
@@ -361,8 +447,9 @@ const Parent = () => {
                         notifications.map((notification) => (
                           <div
                             key={notification.id}
-                            className={`p-4 border-b border-white/10 cursor-pointer hover:bg-white/5 transition-colors ${!notification.read ? 'bg-white/5' : ''
-                              }`}
+                            className={`p-4 border-b border-white/10 cursor-pointer hover:bg-white/5 transition-colors ${
+                              !notification.read ? 'bg-white/5' : ''
+                            }`}
                             onClick={() => markNotificationAsRead(notification.id)}
                           >
                             <div className="flex items-start space-x-3">
@@ -394,7 +481,6 @@ const Parent = () => {
                 )}
               </div>
 
-              {/* User Menu Dropdown */}
               <div className="relative" ref={userMenuRef}>
                 <Button
                   variant="ghost"
@@ -405,7 +491,6 @@ const Parent = () => {
                   <User className="h-9 w-9 text-foreground" />
                 </Button>
 
-                {/* User Menu Panel */}
                 {showUserMenu && (
                   <div className="fixed right-3 sm:right-4 top-20 w-60 sm:w-64 bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl z-[9999]">
                     <div className="p-4 border-b border-white/10">
@@ -508,18 +593,30 @@ const Parent = () => {
 
       {/* Main Layout */}
       <div className="relative z-10 flex mt-[64px] min-h-[calc(100vh-4rem)]">
-        {/* Sidebar */}
+        {/* Sidebar - NOW USES DYNAMIC ITEMS */}
         <SidebarNavigation
           items={sidebarItems}
           activeItem={activeView}
-          onItemClick={setActiveView}
+          onItemClick={(item) => {
+            if (isFeatureAvailable(item)) {
+              setActiveView(item);
+              if (isMobile) {
+                setMobileMenuOpen(false);
+              }
+            } else {
+              toast({
+                title: "Feature Not Available",
+                description: "This feature is not currently enabled.",
+                variant: "destructive"
+              });
+            }
+          }}
           userType="parent"
           collapsed={sidebarCollapsed}
           mobileOpen={mobileMenuOpen}
           onMobileClose={() => setMobileMenuOpen(false)}
         />
 
-        {/* Main Content */}
         <div className={cn(
           "flex-1 w-full min-w-0 transition-all duration-300 ease-in-out",
           "px-4 py-4 sm:px-12 sm:py-6 mx-auto",

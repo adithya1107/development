@@ -49,7 +49,7 @@ interface UserProfile {
   last_name: string;
   email: string;
   user_code: string;
-  user_type: 'student' | 'faculty' | 'admin' | 'staff';
+  user_type: 'student' | 'faculty' | 'admin' | 'parent' | 'alumni';
   is_active: boolean;
   created_at: string;
   updated_at: string;

@@ -22,7 +22,8 @@ import {
   X,
   Award,
   Briefcase,
-  Menu
+  Menu,
+  Shield
 } from 'lucide-react';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
 import AlumniDashboard from '@/components/alumni/AlumniDashboard';
@@ -34,6 +35,18 @@ import AlumniSupport from '@/components/alumni/AlumniSupport';
 import { supabase } from '@/integrations/supabase/client';
 import AlumniCommunicationHub from '@/components/alumni/AlumniCommunicationHub';
 
+// Import dynamic feature loader
+import { loadUserFeatures, featuresToSidebarItems } from '@/lib/featureLoader';
+
+interface SidebarItem {
+  id: string;
+  label: string;
+  icon: any;
+  route?: string;
+  enabled?: boolean;
+  order?: number;
+}
+
 const Alumni = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [user, setUser] = useState(null);
@@ -44,11 +57,16 @@ const Alumni = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
+  
+  // NEW: Dynamic feature configuration state
+  const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([]);
+  const [availableFeatureKeys, setAvailableFeatureKeys] = useState<Set<string>>(new Set());
+  const [isLoadingFeatures, setIsLoadingFeatures] = useState(true);
+  
   const notificationRef = useRef(null);
   const userMenuRef = useRef(null);
 
-  // Mock notifications for alumni
-  const [notifications,setNotifications] = useState([
+  const [notifications, setNotifications] = useState([
     {
       id: 1,
       type: 'info',
@@ -72,31 +90,34 @@ const Alumni = () => {
       message: 'Please update your current employment details',
       time: '3 days ago',
       read: true
-    },
-    {
-      id: 4,
-      type: 'info',
-      title: 'New Job Opening',
-      message: 'Tech startup is looking for experienced professionals',
-      time: '1 week ago',
-      read: true
-    },
-    {
-      id: 5,
-      type: 'success',
-      title: 'Network Connection',
-      message: 'John Smith accepted your connection request',
-      time: '1 week ago',
-      read: true
     }
   ]);
+
+  // Fallback default features
+  const getDefaultAlumniFeatures = (): SidebarItem[] => {
+    return [
+      { id: 'dashboard', label: 'Dashboard', icon: Home, enabled: true, order: 0 },
+      { id: 'events', label: 'Events', icon: Calendar, enabled: true, order: 1 },
+      { id: 'networking', label: 'Networking', icon: Users, enabled: true, order: 2 },
+      { id: 'contributions', label: 'Contributions', icon: Heart, enabled: true, order: 3 },
+      { id: 'communication', label: 'Communication Hub', icon: Mail, enabled: true, order: 4 },
+      { id: 'documents', label: 'Documents', icon: FileText, enabled: true, order: 5 },
+      { id: 'support', label: 'Support', icon: HelpCircle, enabled: true, order: 6 },
+    ];
+  };
+
+  // NEW: Check if a feature is available
+  const isFeatureAvailable = (featureKey: string): boolean => {
+    if (isLoadingFeatures) return true;
+    if (availableFeatureKeys.size === 0) return true;
+    return availableFeatureKeys.has(featureKey);
+  };
 
   // Check for mobile view
   useEffect(() => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      // Close mobile menu when switching to desktop
       if (!mobile) {
         setMobileMenuOpen(false);
       }
@@ -105,6 +126,7 @@ const Alumni = () => {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
   const handleSidebarToggle = () => {
     if (isMobile) {
       setMobileMenuOpen(!mobileMenuOpen);
@@ -157,114 +179,120 @@ const Alumni = () => {
     });
   };
 
-  // useEffect(() => {
-  //   const initializeUser = async () => {
-  //     try {
-  //       const userData = localStorage.getItem('colcord_user');
-  //       if (!userData) {
-  //         navigate('/');
-  //         return;
-  //       }
-
-  //       const parsedUser = JSON.parse(userData);
-  //       if (parsedUser.user_type !== 'alumni') {
-  //         toast({
-  //           title: 'Access Denied',
-  //           description: 'This area is for alumni only.',
-  //           variant: 'destructive',
-  //         });
-  //         navigate('/');
-  //         return;
-  //       }
-
-  //       setUser(parsedUser);
-  //     } catch (error) {
-  //       console.error('Error checking user:', error);
-  //       navigate('/');
-  //     } finally {
-  //       setIsLoading(false);
-  //     }
-  //   };
-  //   initializeUser();
-  // }, [navigate]);
-
-
   useEffect(() => {
-      const checkUser = async () => {
-        try {
-          // First check Supabase session
-          const { data: { session }, error } = await supabase.auth.getSession();
-  
-          if (error) {
-            console.error('Session error:', error);
+    const checkUser = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('Session error:', error);
+          navigate('/');
+          return;
+        }
+
+        if (session?.user) {
+          const { data: profile, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (profileError || !profile) {
+            console.error('Profile error:', profileError);
             navigate('/');
             return;
           }
-  
-          if (session?.user) {
-            // Get user profile from database
-            const { data: profile, error: profileError } = await supabase
-              .from('user_profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .single();
-  
-            if (profileError || !profile) {
-              console.error('Profile error:', profileError);
-              navigate('/');
-              return;
-            }
-  
-            if (profile.user_type !== 'alumni') {
-              toast({
-                title: 'Access Denied',
-                description: 'This area is for alumni only.',
-                variant: 'destructive',
-              });
-              navigate('/');
-              return;
-            }
-  
-            setUser({
-              user_id: profile.id,
-              user_type: profile.user_type,
-              first_name: profile.first_name,
-              last_name: profile.last_name,
-              college_id: profile.college_id,
-              user_code: profile.user_code,
-              email: profile.email
+
+          if (profile.user_type !== 'alumni') {
+            toast({
+              title: 'Access Denied',
+              description: 'This area is for alumni only.',
+              variant: 'destructive',
             });
-          } else {
-            // Fallback to localStorage
-            const userData = localStorage.getItem('colcord_user');
-            if (!userData) {
-              navigate('/');
-              return;
-            }
-  
-            const parsedUser = JSON.parse(userData);
-            if (parsedUser.user_type !== 'alumni') {
-              toast({
-                title: 'Access Denied',
-                description: 'This area is for alumni only.',
-                variant: 'destructive',
-              });
-              navigate('/');
-              return;
-            }
-            setUser(parsedUser);
+            navigate('/');
+            return;
           }
-        } catch (error) {
-          console.error('Error checking user:', error);
-          navigate('/');
-        } finally {
-          console.log(user);
-          setIsLoading(false);
+
+          setUser({
+            user_id: profile.id,
+            user_type: profile.user_type,
+            first_name: profile.first_name,
+            last_name: profile.last_name,
+            college_id: profile.college_id,
+            user_code: profile.user_code,
+            email: profile.email
+          });
+        } else {
+          const userData = localStorage.getItem('colcord_user');
+          if (!userData) {
+            navigate('/');
+            return;
+          }
+
+          const parsedUser = JSON.parse(userData);
+          if (parsedUser.user_type !== 'alumni') {
+            toast({
+              title: 'Access Denied',
+              description: 'This area is for alumni only.',
+              variant: 'destructive',
+            });
+            navigate('/');
+            return;
+          }
+          setUser(parsedUser);
         }
-      };
-  
-      checkUser();
-    }, [navigate]);
+      } catch (error) {
+        console.error('Error checking user:', error);
+        navigate('/');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkUser();
+  }, [navigate]);
+
+  // NEW: Load dynamic features from database
+  useEffect(() => {
+    const loadDynamicFeatures = async () => {
+      if (!user?.college_id) return;
+      
+      try {
+        setIsLoadingFeatures(true);
+        console.log('Loading features for alumni:', user.user_id);
+        
+        const features = await loadUserFeatures(user.college_id, 'alumni');
+        
+        if (features.length === 0) {
+          console.warn('No features configured, using defaults');
+          setSidebarItems(getDefaultAlumniFeatures());
+          setAvailableFeatureKeys(new Set(['dashboard', 'events', 'networking', 'contributions', 'communication', 'documents', 'support']));
+        } else {
+          const items = featuresToSidebarItems(features);
+          setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
+          
+          const featureKeys = new Set(features.map(f => f.feature_key));
+          setAvailableFeatureKeys(featureKeys);
+          
+          console.log(`Loaded ${items.length} features for alumni`);
+        }
+      } catch (error) {
+        console.error('Error loading features:', error);
+        toast({
+          title: "Error Loading Features",
+          description: "Using default features",
+          variant: "destructive"
+        });
+        setSidebarItems(getDefaultAlumniFeatures());
+      } finally {
+        setIsLoadingFeatures(false);
+      }
+    };
+
+    if (user?.college_id) {
+      loadDynamicFeatures();
+    }
+  }, [user?.college_id]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -275,7 +303,6 @@ const Alumni = () => {
     });
     navigate('/');
   };
-
 
   const getNotificationIcon = (type) => {
     switch (type) {
@@ -292,12 +319,75 @@ const Alumni = () => {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  if (isLoading) {
+  // NEW: Feature Not Available Component
+  const FeatureNotAvailable = () => (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="text-center">
+        <Shield className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-foreground mb-2">Feature Not Available</h2>
+        <p className="text-muted-foreground mb-4">
+          This feature is currently disabled by your institution.
+        </p>
+        <Button onClick={() => setActiveView('dashboard')} variant="outline">
+          Return to Dashboard
+        </Button>
+      </div>
+    </div>
+  );
+
+  // MODIFIED: renderContent with feature availability checks
+  const renderContent = () => {
+    if (!isFeatureAvailable(activeView)) {
+      return <FeatureNotAvailable />;
+    }
+
+    switch (activeView) {
+      case 'dashboard':
+        return <AlumniDashboard user={user} onNavigate={setActiveView} />;
+      
+      case 'events':
+        return isFeatureAvailable('events')
+          ? <AlumniEvents user={user} />
+          : <FeatureNotAvailable />;
+      
+      case 'networking':
+        return isFeatureAvailable('networking')
+          ? <AlumniNetworking user={user} />
+          : <FeatureNotAvailable />;
+      
+      case 'contributions':
+        return isFeatureAvailable('contributions')
+          ? <AlumniContributions user={user} />
+          : <FeatureNotAvailable />;
+      
+      case 'communication':
+        return isFeatureAvailable('communication')
+          ? <AlumniCommunicationHub alumniData={user} />
+          : <FeatureNotAvailable />;
+      
+      case 'documents':
+        return isFeatureAvailable('documents')
+          ? <AlumniDocuments user={user} />
+          : <FeatureNotAvailable />;
+      
+      case 'support':
+        return isFeatureAvailable('support')
+          ? <AlumniSupport user={user} />
+          : <FeatureNotAvailable />;
+      
+      default:
+        return <AlumniDashboard user={user} />;
+    }
+  };
+
+  if (isLoading || isLoadingFeatures) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading alumni dashboard...</p>
+          <p className="mt-2 text-gray-600">
+            {isLoading ? 'Loading alumni dashboard...' : 'Loading features...'}
+          </p>
         </div>
       </div>
     );
@@ -307,40 +397,8 @@ const Alumni = () => {
     return null;
   }
 
-  const sidebarItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: Home },
-    { id: 'events', label: 'Events', icon: Calendar },
-    { id: 'networking', label: 'Networking', icon: Users },
-    { id: 'contributions', label: 'Contributions', icon: Heart },
-    { id: 'communication', label: 'Communication Hub', icon: Mail },
-    { id: 'documents', label: 'Documents', icon: FileText },
-    { id: 'support', label: 'Support', icon: HelpCircle },
-  ];
-
-  const renderContent = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return <AlumniDashboard user={user} onNavigate={setActiveView} />;
-      case 'events':
-        return <AlumniEvents user={user} />;
-      case 'networking':
-        return <AlumniNetworking user={user} />;
-      case 'contributions':
-        return <AlumniContributions user={user} />;
-      case 'communication':
-        return <AlumniCommunicationHub alumniData={user} />;
-      case 'documents':
-        return <AlumniDocuments user={user} />;
-      case 'support':
-        return <AlumniSupport user={user} />;
-      default:
-        return <AlumniDashboard user={user} />;
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
-      {/* Background Grid */}
       <div className="fixed inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none"></div>
 
       {/* Header */}
@@ -358,7 +416,6 @@ const Alumni = () => {
                 <Menu className="h-7 w-7" />
               </Button>
 
-              {/*Logo*/}
               <div className="flex items-center space-x-2">
                 <h1 className="text-xl sm:text-2xl font-bold text-foreground">ColCord</h1>
                 <div className="hidden sm:flex items-center space-x-2">
@@ -371,11 +428,7 @@ const Alumni = () => {
               </div>
             </div>
 
-
-
-            {/*Right Section*/}
             <div className="flex items-center space-x-2 sm:space-x-3">
-              {/* Notifications Dropdown */}
               <div className="relative" ref={notificationRef}>
                 <Button
                   variant="ghost"
@@ -391,7 +444,6 @@ const Alumni = () => {
                   )}
                 </Button>
 
-                {/* Notifications Panel */}
                 {showNotifications && (
                   <div className="fixed right-3 sm:right-4 top-20 w-72 sm:w-96 bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl z-[9999]">
                     <div className="p-4 border-b border-white/10 flex items-center justify-between">
@@ -418,8 +470,6 @@ const Alumni = () => {
                       </div>
                     </div>
 
-
-
                     <div className="max-h-80 sm:max-h-96 overflow-y-auto">
                       {notifications.length === 0 ? (
                         <div className="p-6 text-center">
@@ -430,8 +480,9 @@ const Alumni = () => {
                         notifications.map((notification) => (
                           <div
                             key={notification.id}
-                            className={`p-4 border-b border-white/10 cursor-pointer hover:bg-white/5 transition-colors ${!notification.read ? 'bg-white/5' : ''
-                              }`}
+                            className={`p-4 border-b border-white/10 cursor-pointer hover:bg-white/5 transition-colors ${
+                              !notification.read ? 'bg-white/5' : ''
+                            }`}
                             onClick={() => markNotificationAsRead(notification.id)}
                           >
                             <div className="flex items-start space-x-3">
@@ -463,8 +514,6 @@ const Alumni = () => {
                 )}
               </div>
 
-
-              {/* User Menu Dropdown */}
               <div className="relative" ref={userMenuRef}>
                 <Button
                   variant="ghost"
@@ -475,7 +524,6 @@ const Alumni = () => {
                   <User className="h-9 w-9 text-foreground" />
                 </Button>
 
-                {/* User Menu Panel */}
                 {showUserMenu && (
                   <div className="fixed right-3 sm:right-4 top-20 w-60 sm:w-64 bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl z-[9999]">
                     <div className="p-4 border-b border-white/10">
@@ -493,7 +541,6 @@ const Alumni = () => {
                             {user.email}
                           </p>
 
-
                           <div className="flex items-center space-x-2 mt-2">
                             <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-400/30 font-medium text-xs pointer-events-none">
                               alumni
@@ -506,8 +553,6 @@ const Alumni = () => {
                       </div>
                     </div>
 
-
-                    {/*User Dropdown elements*/}
                     <div className="p-2 space-y-2 sm:space-y-0">
                       <Button
                         variant="ghost"
@@ -545,8 +590,6 @@ const Alumni = () => {
                         Account Settings
                       </Button>
 
-
-
                       <div className="h-px bg-white/10 my-2"></div>
                       <Button
                         variant="ghost"
@@ -570,18 +613,30 @@ const Alumni = () => {
 
       {/* Main Layout */}
       <div className="relative z-10 flex mt-[64px] min-h-[calc(100vh-4rem)]">
-        {/* Sidebar */}
+        {/* Sidebar - NOW USES DYNAMIC ITEMS */}
         <SidebarNavigation
           items={sidebarItems}
           activeItem={activeView}
-          onItemClick={setActiveView}
+          onItemClick={(item) => {
+            if (isFeatureAvailable(item)) {
+              setActiveView(item);
+              if (isMobile) {
+                setMobileMenuOpen(false);
+              }
+            } else {
+              toast({
+                title: "Feature Not Available",
+                description: "This feature is not currently enabled.",
+                variant: "destructive"
+              });
+            }
+          }}
           userType="alumni"
           collapsed={sidebarCollapsed}
           mobileOpen={mobileMenuOpen}
           onMobileClose={() => setMobileMenuOpen(false)}
         />
 
-        {/* Main Content */}
         <div className={cn(
           "flex-1 w-full min-w-0 transition-all duration-300 ease-in-out",
           "px-4 py-4 sm:px-12 sm:py-6 mx-auto",

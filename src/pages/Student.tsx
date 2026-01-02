@@ -13,7 +13,8 @@ import {
   Clock,
   FileText,
   Bell,
-  Menu,  Users,
+  Menu,
+  Users,
   Sun,
   Settings,
   User,
@@ -27,7 +28,8 @@ import {
   X,
   Award,
   TrendingUp,
-  Bot
+  Bot,
+  ShoppingBag
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
@@ -52,7 +54,10 @@ import StudentProfile from '@/pages/student_profile.tsx';
 import Furlong from '@/components/student/Furlong';
 import StudentCGPADashboard from '@/components/student/StudentCGPADashboard';
 
-// NEW: Added TypeScript type for a single notification
+// Import dynamic feature loader
+import { loadUserFeatures, featuresToSidebarItems } from '@/lib/FeatureLoader';
+
+// Type definitions
 type Notification = {
   id: string;
   recipient_id: string;
@@ -61,10 +66,9 @@ type Notification = {
   notification_type: 'success' | 'warning' | 'error' | 'info';
   is_read: boolean;
   created_at: string;
-  [key: string]: any; // Allows for other properties not strictly typed
+  [key: string]: any;
 };
 
-// NEW: Added TypeScript type for student data
 export type StudentData = {
   user_id: string;
   user_type: string;
@@ -74,6 +78,15 @@ export type StudentData = {
   user_code: string;
   email: string;
 };
+
+interface SidebarItem {
+  id: string;
+  label: string;
+  icon: any;
+  route?: string;
+  enabled?: boolean;
+  order?: number;
+}
 
 const Student = () => {
   const [activeView, setActiveView] = useState('dashboard');
@@ -89,6 +102,9 @@ const Student = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   
+  const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([]);
+  const [availableFeatureKeys, setAvailableFeatureKeys] = useState<Set<string>>(new Set());
+  const [isLoadingFeatures, setIsLoadingFeatures] = useState(true);
 
   const notificationRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -100,7 +116,6 @@ const Student = () => {
     const checkMobile = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      // Close mobile menu when switching to desktop
       if (!mobile) {
         setMobileMenuOpen(false);
       }
@@ -147,10 +162,9 @@ const Student = () => {
         return;
       }
 
-
-      // Check if any tag has category 'club'
       const hasClubTags = data?.some(
-        assignment => assignment.user_tags?.tag_category === 'student_role'
+        assignment => assignment.user_tags?.tag_category === 'student_role' && 
+                     assignment.user_tags?.tag_name === 'club_president'
       );
 
       setHasClubAccess(hasClubTags || false);
@@ -184,7 +198,6 @@ const Student = () => {
             };
             setStudentData(userData);
             
-            // NEW: Check club access after setting student data
             await checkClubAccess(profile.id);
             
             // Fetch profile photo
@@ -218,7 +231,95 @@ const Student = () => {
     checkUser();
   }, [navigate]);
 
-  // Real-time notification handling from Supabase
+  // NEW: Load dynamic features from database
+  useEffect(() => {
+    const loadDynamicFeatures = async () => {
+      if (!studentData?.college_id) return;
+      
+      try {
+        setIsLoadingFeatures(true);
+        console.log('Loading features for student:', studentData.user_id);
+        
+        // Load features from database
+        const features = await loadUserFeatures(studentData.college_id, 'student');
+        
+        if (features.length === 0) {
+          console.warn('No features configured, using defaults');
+          setSidebarItems(getDefaultStudentFeatures());
+          setAvailableFeatureKeys(new Set(['dashboard', 'schedule', 'attendance', 'courses', 'communication', 'support']));
+        } else {
+          // Convert features to sidebar items
+          const items = featuresToSidebarItems(features);
+          
+          // Add club feature dynamically if user has access
+          if (hasClubAccess) {
+            const clubFeature = features.find(f => f.feature_key === 'clubs');
+            if (clubFeature && !items.find(i => i.id === 'clubs')) {
+              items.push({
+                id: 'clubs',
+                label: 'Club Activities',
+                icon: Users,
+                enabled: true,
+                order: items.length
+              });
+            }
+          }
+          
+          setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
+          
+          const featureKeys = new Set(features.map(f => f.feature_key));
+          if (hasClubAccess) featureKeys.add('clubs');
+          setAvailableFeatureKeys(featureKeys);
+          
+          console.log(`Loaded ${items.length} features for student`);
+        }
+      } catch (error) {
+        console.error('Error loading features:', error);
+        toast({
+          title: "Error Loading Features",
+          description: "Using default features",
+          variant: "destructive"
+        });
+        setSidebarItems(getDefaultStudentFeatures());
+      } finally {
+        setIsLoadingFeatures(false);
+      }
+    };
+
+    if (studentData?.college_id) {
+      loadDynamicFeatures();
+    }
+  }, [studentData?.college_id, hasClubAccess]);
+
+  // Fallback default features
+  const getDefaultStudentFeatures = (): SidebarItem[] => {
+    return [
+      { id: 'dashboard', label: 'Dashboard', icon: GraduationCap, enabled: true, order: 0 },
+      { id: 'schedule', label: 'Schedule', icon: Clock, enabled: true, order: 1 },
+      { id: 'attendance', label: 'Attendance', icon: Calendar, enabled: true, order: 2 },
+      { id: 'courses', label: 'Courses', icon: BookOpen, enabled: true, order: 3 },
+      { id: 'quizzes', label: 'Quizzes', icon: Sparkle, enabled: true, order: 4 },
+      { id: 'gradebook', label: 'Gradebook', icon: FileText, enabled: true, order: 5 },
+      { id: 'cgpa', label: 'CGPA', icon: TrendingUp, enabled: true, order: 6 },
+      { id: 'events', label: 'Events', icon: Bell, enabled: true, order: 7 },
+      { id: 'clubs', label: 'Clubs', icon: Users, enabled: true, order: 8 },
+      { id: 'marketplace', label: 'Marketplace', icon: ShoppingBag, enabled: true, order: 8 },
+      { id: 'furlong', label: 'Furlong', icon: Sun, enabled: true, order: 9 },
+      { id: 'communication', label: 'Communication', icon: MessageSquare, enabled: true, order: 10 },
+      { id: 'announcements', label: 'Announcements', icon: Mail, enabled: true, order: 11 },
+      { id: 'hostel', label: 'Hostel', icon: Building, enabled: true, order: 12 },
+      { id: 'support', label: 'Support', icon: HelpCircle, enabled: true, order: 13 },
+    ];
+  };
+
+  // NEW: Check if a feature is available
+  const isFeatureAvailable = (featureKey: string): boolean => {
+    if (isLoadingFeatures) return true;
+    if (availableFeatureKeys.size === 0) return true;
+    return availableFeatureKeys.has(featureKey);
+  };
+
+  // Real-time notification handling
   useEffect(() => {
     if (!studentData?.user_id) return;
 
@@ -314,7 +415,11 @@ const Student = () => {
 
     if (error) {
       console.error('Error marking notification as read:', error);
-      toast({ title: "Error", description: "Could not update notification.", variant: "destructive"});
+      toast({ 
+        title: "Error", 
+        description: "Could not update notification.", 
+        variant: "destructive"
+      });
     }
   };
 
@@ -327,7 +432,11 @@ const Student = () => {
 
     if (error) {
       console.error('Error clearing notifications:', error);
-      toast({ title: "Error", description: "Failed to clear notifications.", variant: "destructive"});
+      toast({ 
+        title: "Error", 
+        description: "Failed to clear notifications.", 
+        variant: "destructive"
+      });
     } else {
       setNotifications([]);
       setShowNotifications(false);
@@ -360,7 +469,6 @@ const Student = () => {
     });
   };
 
-  // ADD THIS: Handle sidebar toggle
   const handleSidebarToggle = () => {
     if (isMobile) {
       setMobileMenuOpen(!mobileMenuOpen);
@@ -369,12 +477,141 @@ const Student = () => {
     }
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const handleProfileIconClick = () => {
+    console.log('Profile icon clicked! Setting view to profile...');
+    setShowUserMenu(false);
+    setActiveView('profile');
+  };
 
-  if (loading) {
+  const unreadCount = notifications.filter(n => !n.is_read).length;
+
+  // NEW: Feature Not Available Component
+  const FeatureNotAvailable = () => (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="text-center">
+        <AlertCircle className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-foreground mb-2">Feature Not Available</h2>
+        <p className="text-muted-foreground mb-4">
+          This feature is currently disabled by your institution.
+        </p>
+        <Button onClick={() => setActiveView('dashboard')} variant="outline">
+          Return to Dashboard
+        </Button>
+      </div>
+    </div>
+  );
+
+  // MODIFIED: renderContent with feature availability checks
+  const renderContent = () => {
+    // Check if current view is available
+    if (!isFeatureAvailable(activeView) && activeView !== 'profile') {
+      return (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertCircle className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h2 className="text-2xl font-semibold text-foreground mb-2">Feature Not Available</h2>
+            <p className="text-muted-foreground mb-4">
+              This feature is not currently enabled for students.
+            </p>
+            <Button onClick={() => setActiveView('dashboard')}>
+              Return to Dashboard
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    switch (activeView) {
+      case 'dashboard':
+        return <StudentDashboard studentData={studentData} onNavigate={setActiveView} />;
+      
+      case 'schedule':
+        return isFeatureAvailable('schedule') 
+          ? <ScheduleTimetable studentData={studentData} />
+          : <FeatureNotAvailable />;
+      
+      case 'attendance':
+        return isFeatureAvailable('attendance')
+          ? <AttendanceOverview studentData={studentData} />
+          : <FeatureNotAvailable />;
+      
+      case 'courses':
+        return isFeatureAvailable('courses')
+          ? <CoursesLearningSnapshot studentData={studentData} />
+          : <FeatureNotAvailable />;
+      
+      case 'quizzes':
+        return isFeatureAvailable('quizzes')
+          ? <QuizTaker />
+          : <FeatureNotAvailable />;
+      
+      case 'gradebook':
+        return isFeatureAvailable('gradebook')
+          ? <StudentGrades />
+          : <FeatureNotAvailable />;
+      
+      case 'cgpa':
+        return isFeatureAvailable('cgpa')
+          ? <StudentCGPADashboard studentData={studentData} />
+          : <FeatureNotAvailable />;
+      
+      case 'events':
+        return isFeatureAvailable('events')
+          ? <Events studentData={studentData} />
+          : <FeatureNotAvailable />;
+      
+      case 'marketplace':
+        return isFeatureAvailable('marketplace')
+          ? <MarketplaceApp onNavigateToChat={handleNavigateToChat} />
+          : <FeatureNotAvailable />;
+      
+      case 'furlong':
+        return isFeatureAvailable('furlong')
+          ? <Furlong />
+          : <FeatureNotAvailable />;
+      
+      case 'clubs':
+        return (hasClubAccess && isFeatureAvailable('clubs'))
+          ? <ClubActivityCenter studentData={studentData} />
+          : <FeatureNotAvailable />;
+      
+      case 'communication':
+        return isFeatureAvailable('communication')
+          ? <CommunicationCenter studentData={studentData} initialChannelId={selectedChannelId} />
+          : <FeatureNotAvailable />;
+      
+      case 'announcements':
+        return isFeatureAvailable('announcements')
+          ? <Anouncements studentData={studentData} />
+          : <FeatureNotAvailable />;
+      
+      case 'hostel':
+        return isFeatureAvailable('hostel')
+          ? <HostelFacility studentData={studentData} />
+          : <FeatureNotAvailable />;
+      
+      case 'support':
+        return isFeatureAvailable('support')
+          ? <SupportHelp studentData={studentData} />
+          : <FeatureNotAvailable />;
+      
+      case 'profile':
+        return <StudentProfile studentData={studentData} onNavigate={setActiveView} />;
+      
+      default:
+        return <StudentDashboard studentData={studentData} onNavigate={setActiveView} />;
+    }
+  };
+
+  if (loading || isLoadingFeatures) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-role-student" />
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-role-student mx-auto" />
+          <p className="mt-4 text-muted-foreground">
+            {loading ? 'Loading student portal...' : 'Loading features...'}
+          </p>
+        </div>
       </div>
     );
   }
@@ -382,86 +619,6 @@ const Student = () => {
   if (!studentData) {
     return null;
   }
-
-  const sidebarItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: GraduationCap },
-    { id: 'schedule', label: 'Schedule', icon: Clock },
-    { id: 'attendance', label: 'Attendance', icon: Calendar },
-    { id: 'courses', label: 'Courses', icon: BookOpen },
-    // { id: 'chatbot', label: 'Chatbot', icon: Bot },
-    { id: 'quizzes', label: 'Quizzes', icon: Sparkle },
-    { id: 'gradebook', label: 'Gradebook', icon: FileText },
-    { id: 'cgpa', label: 'CGPA', icon: TrendingUp },
-    { id: 'events', label: 'Events', icon: Bell },
-    { id: 'marketplace', label: 'Marketplace', icon: Award },
-    { id: 'furlong', label: 'Furlong', icon: Sun },
-    // NEW: Conditionally add club activity center
-    ...(hasClubAccess ? [{ id: 'clubs', label: 'Club Activities', icon: Users }] : []),
-    { id: 'communication', label: 'Communication', icon: MessageSquare },
-    { id: 'announcements', label: 'Anouncements', icon: Mail },
-    // { id: 'payments', label: 'Payments', icon: CreditCard },
-    { id: 'hostel', label: 'Hostel', icon: Building },
-    { id: 'support', label: 'Support', icon: HelpCircle },
-  ];
-
-  const isFullWidthView = () => {
-    // Pages that handle their own padding and spacing internally
-    const fullWidthPages = ['dashboard', 'courses', 'profile'];
-    return fullWidthPages.includes(activeView);
-  };
-
-  // NEW: Handler for the profile icon click
-  // REPLACE your old function with this:
-   // REPLACE your old function with this new version:
-   const handleProfileIconClick = () => {
-    console.log('Profile icon clicked! Setting view to profile...');
-    setShowUserMenu(false); // This closes the small dropdown
-    setActiveView('profile'); // This sets the main content to the profile page
-   };
-
-  const renderContent = () => {
-    switch (activeView) {
-      case 'dashboard':
-        return <StudentDashboard studentData={studentData} onNavigate={setActiveView} />;
-      case 'schedule':
-        return <ScheduleTimetable studentData={studentData} />;
-      case 'attendance':
-        return <AttendanceOverview studentData={studentData} />;
-      case 'courses':
-        return <CoursesLearningSnapshot studentData={studentData} />;
-      // case 'chatbot':
-      //   return <Chatbot />;
-      case 'quizzes':
-        return <QuizTaker />;
-      case 'gradebook':
-        return <StudentGrades />;
-      case 'cgpa':
-        return <StudentCGPADashboard studentData={studentData} />;
-      case 'events':
-        return <Events studentData={studentData} />;
-      case 'marketplace':
-        return <MarketplaceApp onNavigateToChat={handleNavigateToChat} />;
-      case 'furlong':
-        return <Furlong studentData={studentData} />;
-      // NEW: Club activity center case
-      case 'clubs':
-        return hasClubAccess ? <ClubActivityCenter studentData={studentData} /> : <StudentDashboard studentData={studentData} onNavigate={setActiveView}/>;
-      case 'communication':
-        return <CommunicationCenter studentData={studentData} initialChannelId={selectedChannelId} />;
-      case 'announcements':
-        return <Anouncements studentData={studentData} />;
-      // case 'payments':
-      //   return <PaymentsFees studentData={studentData} />;
-      case 'hostel':
-        return <HostelFacility studentData={studentData} />;
-      case 'support':
-        return <SupportHelp studentData={studentData} />;
-      case 'profile':
-        return <StudentProfile studentData={studentData} onNavigate={setActiveView} />;
-      default:
-        return <StudentDashboard studentData={studentData} onNavigate={setActiveView}/>;
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -474,7 +631,6 @@ const Student = () => {
           <div className="flex justify-between items-center h-16">
             {/* Left Section */}
             <div className="flex items-center space-x-3 sm:space-x-6">
-              {/* UPDATED: Sidebar Toggle */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -485,7 +641,6 @@ const Student = () => {
                 <Menu className="h-7 w-7" />
               </Button>
 
-              {/* Logo + Portal Name */}
               <div className="flex items-center space-x-2">
                 <h1 className="text-xl sm:text-2xl font-bold text-foreground">ColCord</h1>
                 <div className="hidden sm:flex items-center space-x-2">
@@ -500,7 +655,6 @@ const Student = () => {
 
             {/* Right Section */}
             <div className="flex items-center space-x-2 sm:space-x-3">
-
               {/* Notifications */}
               <div className="relative" ref={notificationRef}>
                 <Button
@@ -517,7 +671,6 @@ const Student = () => {
                   )}
                 </Button>
 
-                {/* Notifications Dropdown */}
                 {showNotifications && (
                   <div className="fixed right-3 sm:right-4 top-20 w-72 sm:w-96 bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl z-[9999]">
                     <div className="p-4 border-b border-white/10 flex items-center justify-between">
@@ -588,6 +741,7 @@ const Student = () => {
                 )}
               </div>
               
+              {/* User Menu */}
               <div className="relative" ref={userMenuRef}>
                 <Button 
                   variant="ghost" 
@@ -606,12 +760,10 @@ const Student = () => {
                   )}
                 </Button>
 
-                {/* User Menu Dropdown */}
                 {showUserMenu && (
                   <div className="fixed right-3 sm:right-4 top-20 w-60 sm:w-64 bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl z-[9999]">
                     <div className="p-4 border-b border-white/10">
                       <div className="flex items-center space-x-3">
-
                         <button
                           type="button"
                           onClick={handleProfileIconClick}
@@ -685,11 +837,24 @@ const Student = () => {
 
       {/* Main Layout */}
       <div className="relative z-10 flex mt-[64px] min-h-[calc(100vh-4rem)]">
-        {/* UPDATED: Sidebar */}
+        {/* Sidebar - NOW USES DYNAMIC ITEMS */}
         <SidebarNavigation
           items={sidebarItems}
           activeItem={activeView}
-          onItemClick={setActiveView}
+          onItemClick={(item) => {
+            if (isFeatureAvailable(item)) {
+              setActiveView(item);
+              if (isMobile) {
+                setMobileMenuOpen(false);
+              }
+            } else {
+              toast({
+                title: "Feature Not Available",
+                description: "This feature is not currently enabled.",
+                variant: "destructive"
+              });
+            }
+          }}
           userType="student"
           collapsed={sidebarCollapsed}
           mobileOpen={mobileMenuOpen}
@@ -712,10 +877,6 @@ const Student = () => {
           onClick={() => setSidebarCollapsed(true)}
         />
       )}
-      
-      
-      
-      
     </div>
   );
 };

@@ -101,7 +101,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
       if (tagsError) throw tagsError;
 
       const clubTags = userTags
-        ?.filter((ut: any) => ut.user_tags?.tag_category === 'club')
+        ?.filter((ut: any) => ut.user_tags?.tag_category === 'student_role')
         .map((ut: any) => ut.tag_id) || [];
 
       if (clubTags.length === 0) {
@@ -523,7 +523,6 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
           <div className="flex gap-2">
             <Button
               onClick={() => setShowCreateAnnouncement(true)}
-              className="bg-role-student hover:bg-role-student/90"
             >
               <Plus className="h-4 w-4 mr-2" />
               New Announcement
@@ -531,7 +530,6 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
             <Button
               onClick={() => setShowCreateEvent(true)}
               variant="outline"
-              className="border-white/20"
             >
               <Calendar className="h-4 w-4 mr-2" />
               New Event
@@ -558,19 +556,19 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border-blue-500/20">
+        <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Announcements</p>
                 <p className="text-2xl font-bold text-foreground mt-1">{announcements.length}</p>
               </div>
-              <Bell className="h-10 w-10 text-blue-400 opacity-50" />
+              <Bell className="h-10 w-10 opacity-50" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/10 border-purple-500/20">
+        <Card >
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -579,12 +577,12 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   {events.filter(e => new Date(e.start_date) > new Date()).length}
                 </p>
               </div>
-              <Calendar className="h-10 w-10 text-purple-400 opacity-50" />
+              <Calendar className="h-10 w-10 opacity-50" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500/10 to-green-600/10 border-green-500/20">
+        <Card >
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -593,12 +591,12 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   {announcements.filter(a => !a.is_read).length}
                 </p>
               </div>
-              <Eye className="h-10 w-10 text-green-400 opacity-50" />
+              <Eye className="h-10 w-10 opacity-50" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-500/10 to-orange-600/10 border-orange-500/20">
+        <Card >
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -607,7 +605,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   {isPresident ? 'President' : 'Member'}
                 </p>
               </div>
-              <Award className="h-10 w-10 text-orange-400 opacity-50" />
+              <Award className="h-10 w-10 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -616,11 +614,11 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
       {/* Main Content Tabs */}
       <Tabs defaultValue="announcements" className="space-y-6">
         <TabsList className="bg-card/50 border border-white/10">
-          <TabsTrigger value="announcements" className="data-[state=active]:bg-role-student">
+          <TabsTrigger value="announcements">
             <Bell className="h-4 w-4 mr-2" />
             Announcements
           </TabsTrigger>
-          <TabsTrigger value="events" className="data-[state=active]:bg-role-student">
+          <TabsTrigger value="events">
             <Calendar className="h-4 w-4 mr-2" />
             Events
           </TabsTrigger>
@@ -668,7 +666,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                 <Card
                   key={announcement.id}
                   className={`bg-card/50 backdrop-blur border-white/10 transition-all hover:border-role-student/50 ${
-                    !announcement.is_read ? 'ring-2 ring-role-student/30' : ''
+                    !announcement.is_read ? 'ring-2' : ''
                   }`}
                   onClick={() => !announcement.is_read && markAnnouncementAsRead(announcement.id)}
                 >
@@ -683,7 +681,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                             {announcement.announcement_type}
                           </Badge>
                           {!announcement.is_read && (
-                            <Badge className="bg-role-student/20 text-role-student border-role-student/30">
+                            <Badge >
                               New
                             </Badge>
                           )}
@@ -731,7 +729,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                               e.stopPropagation();
                               handleDeleteAnnouncement(announcement.id);
                             }}
-                            className="h-8 w-8 p-0 text-red-400 hover:text-red-300"
+                            className="h-8 w-8 p-0"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -742,7 +740,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   <CardContent>
                     <p className="text-muted-foreground whitespace-pre-wrap">{announcement.content}</p>
                     {announcement.expires_at && (
-                      <div className="mt-4 flex items-center gap-2 text-sm text-yellow-400">
+                      <div className="mt-4 flex items-center gap-2 text-sm">
                         <AlertCircle className="h-4 w-4" />
                         Expires on {new Date(announcement.expires_at).toLocaleDateString()}
                       </div>
@@ -784,17 +782,17 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                               {event.event_type}
                             </Badge>
                             {isUpcoming && (
-                              <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                              <Badge >
                                 Upcoming
                               </Badge>
                             )}
                             {isPast && (
-                              <Badge className="bg-gray-500/20 text-gray-400 border-gray-500/30">
+                              <Badge >
                                 Past
                               </Badge>
                             )}
                             {event.user_registered && (
-                              <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+                              <Badge >
                                 <CheckCircle className="h-3 w-3 mr-1" />
                                 Registered
                               </Badge>
@@ -856,7 +854,6 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                           </div>
                           <Button
                             onClick={() => handleRegisterForEvent(event.id)}
-                            className="bg-role-student hover:bg-role-student/90"
                           >
                             Register Now
                           </Button>
@@ -873,7 +870,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
 
       {/* Create/Edit Announcement Modal */}
       {(showCreateAnnouncement || editingAnnouncement) && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <Card className="w-full max-w-2xl bg-background border-white/20 max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -979,7 +976,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                 <div className="flex gap-3 pt-4">
                   <Button
                     type="submit"
-                    className="flex-1 bg-role-student hover:bg-role-student/90"
+                    className="flex-1"
                   >
                     <Save className="h-4 w-4 mr-2" />
                     {editingAnnouncement ? 'Update' : 'Create'} Announcement
@@ -1171,7 +1168,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                 <div className="flex gap-3 pt-4">
                   <Button
                     type="submit"
-                    className="flex-1 bg-role-student hover:bg-role-student/90"
+                    className="flex-1"
                   >
                     <Save className="h-4 w-4 mr-2" />
                     Create Event
