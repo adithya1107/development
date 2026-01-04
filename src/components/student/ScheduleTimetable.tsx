@@ -235,6 +235,15 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
+  const formatTimeShort = (timeString: string) => {
+    if (!timeString) return '';
+    const [hours, minutes] = timeString.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minutes}${ampm}`;
+  };
+
   const timeToMinutes = (timeString: string) => {
     if (!timeString) return 0;
     const [hours, minutes] = timeString.split(':').map(Number);
@@ -249,6 +258,54 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
       }
       return cls.day_of_week === dayOfWeek;
     });
+  };
+
+  const detectOverlaps = (classes: any[]) => {
+    const sortedClasses = [...classes].sort((a, b) => 
+      timeToMinutes(a.start_time) - timeToMinutes(b.start_time)
+    );
+
+    const overlaps = [];
+    for (let i = 0; i < sortedClasses.length; i++) {
+      const current = sortedClasses[i];
+      const currentStart = timeToMinutes(current.start_time);
+      const currentEnd = timeToMinutes(current.end_time);
+      
+      let overlapGroup = [current];
+      
+      for (let j = i + 1; j < sortedClasses.length; j++) {
+        const next = sortedClasses[j];
+        const nextStart = timeToMinutes(next.start_time);
+        const nextEnd = timeToMinutes(next.end_time);
+        
+        // Check if there's overlap
+        if (nextStart < currentEnd) {
+          overlapGroup.push(next);
+        }
+      }
+      
+      if (overlapGroup.length > 1) {
+        overlaps.push(overlapGroup);
+      }
+    }
+    
+    return overlaps;
+  };
+
+  const calculateOverlapPositions = (classes: any[]) => {
+    const positions = new Map();
+    const overlaps = detectOverlaps(classes);
+    
+    overlaps.forEach(group => {
+      group.forEach((cls, index) => {
+        positions.set(cls, {
+          totalInGroup: group.length,
+          position: index
+        });
+      });
+    });
+    
+    return positions;
   };
 
   const isToday = (date: Date) => {
@@ -295,7 +352,8 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
     
     return {
       top: `${Math.max(0, topPercent)}%`,
-      height: `${Math.max(3, heightPercent)}%`
+      height: `${Math.max(3, heightPercent)}%`,
+      durationMinutes: duration
     };
   };
 
@@ -443,7 +501,7 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
                     {hoveredClass.description}
                   </p>
                 )}
-                <div className="space-y-1 text-xs text-gray-600">
+                <div className="space-y-1 text-xs">
                   <div className="flex items-center gap-1">
                     <Clock className="h-3 w-3 flex-shrink-0" />
                     <span className="font-medium">
@@ -554,71 +612,129 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
                     </div>
                   </div>
 
-                  {getWeekDays(currentWeek).map((date, dayIndex) => (
-                    <div key={dayIndex} className="space-y-2">
-                      <div className={`h-12 text-center p-2 rounded-lg ${
-                        isToday(date) ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                      }`}>
-                        <div className="text-sm font-medium">{daysOfWeek[dayIndex]}</div>
-                        <div className="text-xs">{date.getDate()}</div>
-                      </div>
-                      
-                      <div className="relative border rounded-lg overflow-visible" style={{ height: 'calc(100% - 56px)', minHeight: '700px' }}>
-                        {generateTimeLabels().map((_, index) => (
-                          <div 
-                            key={index}
-                            className="absolute w-full border-t border-muted"
-                            style={{ top: `${(index / (generateTimeLabels().length - 1)) * 100}%` }}
-                          />
-                        ))}
+                  {getWeekDays(currentWeek).map((date, dayIndex) => {
+                    const dayClasses = getClassesForDay(dayIndex, date);
+                    const overlapPositions = calculateOverlapPositions(dayClasses);
+                    
+                    return (
+                      <div key={dayIndex} className="space-y-2">
+                        <div className={`h-12 text-center p-2 rounded-lg ${
+                          isToday(date) ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                        }`}>
+                          <div className="text-sm font-medium">{daysOfWeek[dayIndex]}</div>
+                          <div className="text-xs">{date.getDate()}</div>
+                        </div>
                         
-                        {getClassesForDay(dayIndex, date).map((cls, clsIndex) => {
-                          const position = getClassPosition(cls.start_time, cls.end_time);
-                          const active = isClassActive(cls);
-                          return (
+                        <div className="relative border rounded-lg overflow-visible" style={{ height: 'calc(100% - 56px)', minHeight: '700px' }}>
+                          {generateTimeLabels().map((_, index) => (
                             <div 
-                              key={clsIndex}
-                              className={`absolute left-1 right-1 p-2 rounded text-xs border cursor-pointer transition-colors duration-150 ${getClassTypeStyle(cls)} ${
-                                active ? 'ring-2 ring-offset-1' : ''
-                              }`}
-                              style={position}
-                              onMouseEnter={(e) => {
-                                e.stopPropagation();
-                                handleClassHover(cls, e);
-                              }}
-                              onMouseLeave={(e) => {
-                                e.stopPropagation();
-                                handleClassLeave();
-                              }}
-                            >
-                              <div className="font-medium truncate flex items-center pointer-events-none">
-                                {cls.is_extra_class && (
-                                  <Star className="h-2 w-2 mr-1 flex-shrink-0" />
+                              key={index}
+                              className="absolute w-full border-t border-muted"
+                              style={{ top: `${(index / (generateTimeLabels().length - 1)) * 100}%` }}
+                            />
+                          ))}
+                          
+                          {dayClasses.map((cls, clsIndex) => {
+                            const position = getClassPosition(cls.start_time, cls.end_time);
+                            const active = isClassActive(cls);
+                            const overlapInfo = overlapPositions.get(cls);
+                            
+                            // Calculate width and left offset for overlapping classes
+                            let widthPercent = 100;
+                            let leftPercent = 0;
+                            
+                            if (overlapInfo) {
+                              widthPercent = 100 / overlapInfo.totalInGroup;
+                              leftPercent = widthPercent * overlapInfo.position;
+                            }
+                            
+                            // Determine if class is too small to show details
+                            const isSmallSlot = position.durationMinutes < 45;
+                            const isVerySmallSlot = position.durationMinutes < 30;
+                            
+                            return (
+                              <div 
+                                key={clsIndex}
+                                className={`absolute p-1.5 rounded text-xs border cursor-pointer transition-colors duration-150 overflow-hidden ${getClassTypeStyle(cls)} ${
+                                  active ? 'ring-2 ring-offset-1' : ''
+                                }`}
+                                style={{
+                                  top: position.top,
+                                  height: position.height,
+                                  left: `${leftPercent}%`,
+                                  width: `${widthPercent - 1}%`,
+                                  minHeight: '28px'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.stopPropagation();
+                                  handleClassHover(cls, e);
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.stopPropagation();
+                                  handleClassLeave();
+                                }}
+                              >
+                                {isVerySmallSlot ? (
+                                  // Very small slot - only show course code
+                                  <div className="flex items-center justify-center h-full pointer-events-none">
+                                    <div className="font-semibold text-[10px] truncate flex items-center gap-0.5">
+                                      {cls.is_extra_class && (
+                                        <Star className="h-2 w-2 flex-shrink-0" />
+                                      )}
+                                      <span className="truncate">{cls.course_code}</span>
+                                    </div>
+                                  </div>
+                                ) : isSmallSlot ? (
+                                  // Small slot - show code and time
+                                  <div className="space-y-0.5 pointer-events-none">
+                                    <div className="font-medium text-[10px] truncate flex items-center gap-0.5">
+                                      {cls.is_extra_class && (
+                                        <Star className="h-2 w-2 flex-shrink-0" />
+                                      )}
+                                      <span className="truncate">{cls.course_code}</span>
+                                    </div>
+                                    <div className="text-[9px] truncate">
+                                      {formatTimeShort(cls.start_time)}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  // Normal slot - show all details
+                                  <div className="space-y-0.5 pointer-events-none">
+                                    <div className="font-medium text-[10px] truncate flex items-center gap-0.5">
+                                      {cls.is_extra_class && (
+                                        <Star className="h-2 w-2 flex-shrink-0" />
+                                      )}
+                                      <span className="truncate">{cls.course_code}</span>
+                                    </div>
+                                    <div className="text-[9px] truncate">
+                                      {formatTimeShort(cls.start_time)}
+                                    </div>
+                                    {position.durationMinutes >= 60 && (
+                                      <>
+                                        <div className="text-[9px] truncate">
+                                          {cls.room_location || 'TBD'}
+                                        </div>
+                                        {cls.is_extra_class && position.durationMinutes >= 75 && (
+                                          <div className="text-[9px] truncate capitalize">
+                                            {cls.class_type}
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+                                    {active && position.durationMinutes >= 60 && (
+                                      <div className="text-[9px] font-semibold text-green-600 pointer-events-none">
+                                        ACTIVE
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
-                                <span className="truncate">{cls.course_code}</span>
                               </div>
-                              <div className="text-xs opacity-80 truncate pointer-events-none">
-                                {formatTime(cls.start_time)}
-                              </div>
-                              <div className="text-xs opacity-80 truncate pointer-events-none">
-                                {cls.room_location}
-                              </div>
-                              {cls.is_extra_class && (
-                                <div className="text-xs opacity-70 truncate capitalize pointer-events-none">
-                                  {cls.class_type}
-                                </div>
-                              )}
-                              {active && (
-                                <div className="text-xs font-semibold text-green-600 mt-1 pointer-events-none">
-                                  ACTIVE
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Mobile View - Daily List Format */}
@@ -630,7 +746,7 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
                       {currentMobileDay.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
                     </div>
                     {isToday(currentMobileDay) && (
-                      <div className="text-sm opacity-90 mt-1">Today</div>
+                      <div className="text-sm mt-1">Today</div>
                     )}
                   </div>
                   
@@ -641,7 +757,7 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
                     if (dayClasses.length === 0) {
                       return (
                         <div className="text-center py-12 text-muted-foreground">
-                          <CalendarDays className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                          <CalendarDays className="h-12 w-12 mx-auto mb-3" />
                           <p className="font-medium">No classes scheduled</p>
                           <p className="text-sm mt-1">You have no classes on this day</p>
                         </div>
@@ -678,26 +794,26 @@ const ScheduleTimetable: React.FC<ScheduleTimetableProps> = ({ studentData }) =>
                                     <div className="text-sm font-medium mb-2 truncate">{cls.title}</div>
                                   )}
                                   {cls.description && (
-                                    <p className="text-xs opacity-70 mb-3 line-clamp-2">{cls.description}</p>
+                                    <p className="text-xs mb-3 line-clamp-2">{cls.description}</p>
                                   )}
                                   <div className="space-y-2 text-sm">
                                     <div className="flex items-center gap-2">
-                                      <Clock className="h-4 w-4 opacity-70" />
+                                      <Clock className="h-4 w-4" />
                                       <span className="font-medium">{formatTime(cls.start_time)} - {formatTime(cls.end_time)}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                      <MapPin className="h-4 w-4 opacity-70" />
+                                      <MapPin className="h-4 w-4" />
                                       <span>{cls.room_location || 'Room TBD'}</span>
                                     </div>
                                     {cls.instructor_name && (
                                       <div className="flex items-center gap-2">
-                                        <User className="h-4 w-4 opacity-70" />
+                                        <User className="h-4 w-4" />
                                         <span>{cls.instructor_name}</span>
                                       </div>
                                     )}
                                     {cls.is_extra_class && (
-                                      <div className="text-xs mt-2 opacity-70 capitalize font-medium">
-                                        📚 {cls.class_type} class
+                                      <div className="text-xs mt-2 capitalize font-medium">
+                                        {cls.class_type} class
                                       </div>
                                     )}
                                   </div>

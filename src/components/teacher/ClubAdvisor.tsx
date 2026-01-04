@@ -25,9 +25,10 @@ import PermissionWrapper from '@/components/PermissionWrapper';
 
 interface ClubAdvisorProps {
   teacherData: any;
+  userTags?: any[];
 }
 
-const ClubAdvisor = ({ teacherData }: ClubAdvisorProps) => {
+const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
   const [loading, setLoading] = useState(true);
   const [clubs, setClubs] = useState<any[]>([]);
   const [selectedClub, setSelectedClub] = useState<any>(null);

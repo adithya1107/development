@@ -240,14 +240,14 @@ const StudentCGPADashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="glass-effect border-primary/20">
           <CardContent className="p-6 text-center">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mx-auto mb-3">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-cyan-500/20 flex items-center justify-center mx-auto mb-3">
               <GraduationCap className="w-8 h-8 text-primary" />
             </div>
             <p className="text-4xl font-bold text-primary mb-1">
               {currentCGPA.toFixed(2)}
             </p>
             <p className="text-sm text-muted-foreground mb-2">Cumulative GPA</p>
-            <div className={`inline-block px-3 py-1 rounded-full text-white text-xs font-medium ${status.color}`}>
+            <div className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${status.color}`}>
               {status.text}
             </div>
           </CardContent>
@@ -256,11 +256,11 @@ const StudentCGPADashboard = () => {
         <Card className="glass-effect border-primary/20">
           <CardContent className="p-6 text-center">
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-cyan-500/20 flex items-center justify-center mx-auto mb-3">
-              <BookOpen className="w-8 h-8 text-blue-500" />
+              <BookOpen className="w-8 h-8" />
             </div>
-            <p className="text-4xl font-bold text-blue-500 mb-1">{totalCredits}</p>
+            <p className="text-4xl font-bold mb-1">{totalCredits}</p>
             <p className="text-sm text-muted-foreground">Total Credits</p>
-            <p className="text-xs text-accent mt-1">
+            <p className="text-xs mt-1">
               {academicRecords[0]?.completed_credits || 0} Earned
             </p>
           </CardContent>
@@ -269,13 +269,13 @@ const StudentCGPADashboard = () => {
         <Card className="glass-effect border-primary/20">
           <CardContent className="p-6 text-center">
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mx-auto mb-3">
-              <Target className="w-8 h-8 text-purple-500" />
+              <Target className="w-8 h-8" />
             </div>
-            <p className="text-4xl font-bold text-purple-500 mb-1">
+            <p className="text-4xl font-bold mb-1">
               {semesterData.length}
             </p>
             <p className="text-sm text-muted-foreground">Semesters</p>
-            <p className="text-xs text-accent mt-1">
+            <p className="text-xs mt-1">
               {courseGrades.length} Courses Completed
             </p>
           </CardContent>
@@ -294,47 +294,47 @@ const StudentCGPADashboard = () => {
           <CardContent className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {/* Rank */}
-              <div className="text-center p-4 bg-gradient-to-br from-yellow-500/10 to-orange-500/10 rounded-lg border border-yellow-500/20">
-                <Medal className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
-                <p className="text-3xl font-bold text-yellow-600">#{comparativeStats.rank}</p>
+              <div className="text-center p-4">
+                <Medal className="w-8 h-8 mx-auto mb-2" />
+                <p className="text-3xl font-bold">#{comparativeStats.rank}</p>
                 <p className="text-sm text-muted-foreground">Class Rank</p>
-                <p className="text-xs text-accent mt-1">
+                <p className="text-xs mt-1">
                   out of {comparativeStats.totalStudents} students
                 </p>
               </div>
 
               {/* Percentile */}
-              <div className="text-center p-4 bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-lg border border-green-500/20">
-                <Trophy className="w-8 h-8 text-green-500 mx-auto mb-2" />
-                <p className="text-3xl font-bold text-green-600">
+              <div className="text-center p-4">
+                <Trophy className="w-8 h-8 mx-auto mb-2" />
+                <p className="text-3xl font-bold">
                   {comparativeStats.percentile.toFixed(1)}%
                 </p>
                 <p className="text-sm text-muted-foreground">Percentile</p>
-                <p className="text-xs text-accent mt-1">
+                <p className="text-xs mt-1">
                   Top {comparativeStats.topPercentage.toFixed(1)}%
                 </p>
               </div>
 
               {/* Class Average */}
-              <div className="text-center p-4 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-lg border border-blue-500/20">
-                <BarChart3 className="w-8 h-8 text-blue-500 mx-auto mb-2" />
-                <p className="text-3xl font-bold text-blue-600">
+              <div className="text-center p-4">
+                <BarChart3 className="w-8 h-8  mx-auto mb-2" />
+                <p className="text-3xl font-bold">
                   {comparativeStats.classMean.toFixed(2)}
                 </p>
                 <p className="text-sm text-muted-foreground">Class Average</p>
-                <p className="text-xs text-accent mt-1">
+                <p className="text-xs mt-1">
                   You: {currentCGPA > comparativeStats.classMean ? '+' : ''}{(currentCGPA - comparativeStats.classMean).toFixed(2)}
                 </p>
               </div>
 
               {/* Z-Score */}
-              <div className="text-center p-4 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-lg border border-purple-500/20">
-                <Calculator className="w-8 h-8 text-purple-500 mx-auto mb-2" />
-                <p className="text-3xl font-bold text-purple-600">
+              <div className="text-center p-4">
+                <Calculator className="w-8 h-8 mx-auto mb-2" />
+                <p className="text-3xl font-bold">
                   {comparativeStats.zScore.toFixed(2)}σ
                 </p>
                 <p className="text-sm text-muted-foreground">Standard Score</p>
-                <p className="text-xs text-accent mt-1">
+                <p className="text-xs mt-1">
                   {comparativeStats.zScore > 0 ? 'Above' : 'Below'} mean
                 </p>
               </div>
@@ -343,7 +343,6 @@ const StudentCGPADashboard = () => {
             {/* Performance Breakdown */}
             <div className="mt-6 p-4 bg-accent/5 rounded-lg border border-accent/20">
               <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-accent" />
                 Statistical Breakdown
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">

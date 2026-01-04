@@ -312,10 +312,7 @@ const StudentGrades = () => {
         <CardHeader className="border-b border-primary/20 p-4 sm:p-5 md:p-6">
           <CardTitle className="flex flex-col xs:flex-row items-start xs:items-center gap-2 sm:gap-3 text-primary">
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
-              </div>
-              <span className="text-base sm:text-lg md:text-xl font-semibold">Course Grades</span>
+              <span className="sm:text-lg md:text-2xl font-semibold">Course Grades</span>
             </div>
           </CardTitle>
         </CardHeader>

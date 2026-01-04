@@ -80,6 +80,7 @@ const PERMISSION_SETS = {
     apply_hostel: true,
     facility_requests: true,
     support_tickets: true,
+    view_clubs: true,
   },
   teacher: {
     view_personal_dashboard: true,
@@ -97,6 +98,7 @@ const PERMISSION_SETS = {
     request_certificates: true,
     facility_requests: true,
     support_tickets: true,
+    manage_clubs: true,
   },
   parent: {
     view_personal_dashboard: true,

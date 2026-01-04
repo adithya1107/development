@@ -494,7 +494,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-foreground">Club Activity Center</h1>
+          <h1 className="text-2xl font-bold text-foreground">Club Activity Center</h1>
         </div>
         <Card className="bg-card/50 backdrop-blur border-white/10">
           <CardContent className="flex flex-col items-center justify-center py-16">
@@ -514,7 +514,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Club Activity Center</h1>
+          <h1 className="text-2xl font-bold text-foreground">Club Activity Center</h1>
           <p className="text-muted-foreground mt-1">
             {isPresident ? 'Manage your club activities' : 'Stay updated with club announcements and events'}
           </p>

@@ -338,7 +338,7 @@ const QuizResults = () => {
                     <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-4">
                         <div className={`p-3 rounded border ${question.correct_answer === "true"
-                            ? "bg-green-100 border-green-300 text-green-800"
+                            ? "border-green-300 text-green-800"
                             : studentAnswer === "true"
                               ? "bg-red-100 border-red-300 text-red-800"
                               : "bg-gray-50"
@@ -414,10 +414,7 @@ const QuizResults = () => {
   return (
     <Card className="card-minimal">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-primary text-lg sm:text-xl flex-wrap">
-          <div className="w-8 h-8 bg-gradient-to-br from-primary/20 to-accent/20 rounded-lg flex items-center justify-center">
-            <CheckCircle className="w-5 h-5 text-primary" />
-          </div>
+        <CardTitle className="flex items-center gap-2 text-primary text-2xl sm:text-xl flex-wrap">
           <span>Quiz Results</span>
         </CardTitle>
       </CardHeader>

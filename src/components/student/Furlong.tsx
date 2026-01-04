@@ -666,7 +666,7 @@ const Furlong = () => {
   const renderDiscover = () => (
     <div className="space-y-4">
       {!locationEnabled && (
-        <Alert className="border-blue-500 bg-blue-50">
+        <Alert>
           <MapPinned className="h-4 w-4" />
           <AlertDescription className="flex items-center justify-between">
             <span>Enable location to discover nearby activities</span>
@@ -682,7 +682,7 @@ const Furlong = () => {
           <h2 className="text-2xl font-bold">Discover Activities</h2>
           <p className="text-sm text-muted-foreground">Join nearby activities or create your own</p>
         </div>
-        <Button onClick={() => setCurrentView('create')} disabled={!locationEnabled} className="bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600">
+        <Button onClick={() => setCurrentView('create')} disabled={!locationEnabled}>
           <Plus className="w-4 h-4 mr-2" />Create
         </Button>
       </div>
@@ -954,7 +954,7 @@ const Furlong = () => {
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">Furlong</h1>
+            <h1 className="text-2xl font-bold">Furlong</h1>
             <p className="text-sm text-muted-foreground">Connect with nearby students</p>
           </div>
           <div className="flex gap-2">

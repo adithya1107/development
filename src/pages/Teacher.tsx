@@ -28,7 +28,8 @@ import {
   PlusCircleIcon,
   Menu,
   Building2Icon,
-  Shield
+  Shield,
+  AlertCircle
 } from 'lucide-react';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
 import TeacherDashboard from '@/components/teacher/TeacherDashboard';
@@ -54,6 +55,9 @@ import TeacherCGPAManagement from '@/components/teacher/TeacherCGPAManagement';
 // Import dynamic feature loader
 import { loadUserFeatures, featuresToSidebarItems } from '@/lib/featureLoader';
 
+// Import tag-based access control
+import { useUserTags } from '@/hooks/useUserTags';
+
 interface SidebarItem {
   id: string;
   label: string;
@@ -74,10 +78,12 @@ const Teacher = () => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // NEW: Dynamic feature configuration state
   const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([]);
   const [availableFeatureKeys, setAvailableFeatureKeys] = useState<Set<string>>(new Set());
   const [isLoadingFeatures, setIsLoadingFeatures] = useState(true);
+
+  // Initialize user tags hook for access control
+  const { tags: userTags, loading: tagsLoading, hasTag, hasAnyTag } = useUserTags(teacherData?.user_id || null);
 
   const notificationRef = useRef(null);
   const userMenuRef = useRef(null);
@@ -249,29 +255,61 @@ const Teacher = () => {
     checkUser();
   }, [navigate]);
 
-  // NEW: Load dynamic features from database
   useEffect(() => {
     const loadDynamicFeatures = async () => {
       if (!teacherData?.college_id) return;
       
       try {
         setIsLoadingFeatures(true);
-        console.log('Loading features for faculty:', teacherData.user_id);
+        console.log('Loading features for teacher:', teacherData.user_id);
         
         const features = await loadUserFeatures(teacherData.college_id, 'faculty');
         
         if (features.length === 0) {
           console.warn('No features configured, using defaults');
           setSidebarItems(getDefaultFacultyFeatures());
-          setAvailableFeatureKeys(new Set(['dashboard', 'schedule', 'courses', 'gradebook', 'communication', 'support']));
+          setAvailableFeatureKeys(new Set(['dashboard', 'schedule', 'courses', 'communication', 'support']));
         } else {
           const items = featuresToSidebarItems(features);
+          
+          // Add club advisor feature if user has club_advisor tag
+          const hasClubAdvisorAccess = hasTag('club_advisor');
+          if (hasClubAdvisorAccess) {
+            const clubFeature = features.find(f => f.feature_key === 'club');
+            if (clubFeature && !items.find(i => i.id === 'club')) {
+              items.push({
+                id: 'club',
+                label: 'Club Advisor',
+                icon: Users,
+                enabled: true,
+                order: items.length
+              });
+            }
+          }
+          
+          // Add department feature if user is HOD or department member
+          const hasDepartmentAccess = hasAnyTag(['hod', 'department_member']);
+          if (hasDepartmentAccess) {
+            const deptFeature = features.find(f => f.feature_key === 'department');
+            if (deptFeature && !items.find(i => i.id === 'department')) {
+              items.push({
+                id: 'department',
+                label: 'Department',
+                icon: Building2Icon,
+                enabled: true,
+                order: items.length
+              });
+            }
+          }
+          
           setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
           
           const featureKeys = new Set(features.map(f => f.feature_key));
+          if (hasClubAdvisorAccess) featureKeys.add('club');
+          if (hasDepartmentAccess) featureKeys.add('department');
           setAvailableFeatureKeys(featureKeys);
           
-          console.log(`Loaded ${items.length} features for faculty`);
+          console.log(`Loaded ${items.length} features for teacher`);
         }
       } catch (error) {
         console.error('Error loading features:', error);
@@ -286,10 +324,10 @@ const Teacher = () => {
       }
     };
 
-    if (teacherData?.college_id) {
+    if (teacherData?.college_id && !tagsLoading) {
       loadDynamicFeatures();
     }
-  }, [teacherData?.college_id]);
+  }, [teacherData?.college_id, userTags, tagsLoading]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -360,8 +398,12 @@ const Teacher = () => {
     </div>
   );
 
-  // MODIFIED: renderContent with feature availability checks
+  // MODIFIED: renderContent with feature availability checks and tag-based access
   const renderContent = () => {
+    const hasClubAdvisorAccess = hasTag('club_advisor');
+    const hasDepartmentAccess = hasAnyTag(['hod', 'department_member']);
+    const isHOD = hasTag('hod');
+
     if (!isFeatureAvailable(activeView)) {
       return <FeatureNotAvailable />;
     }
@@ -400,10 +442,37 @@ const Teacher = () => {
           ? <TeacherEvents teacherData={teacherData} />
           : <FeatureNotAvailable />;
       
+      // case 'club':
+      //   if (!hasClubAdvisorAccess) {
+      //     return (
+      //       <div className="flex items-center justify-center h-full">
+      //         <div className="text-center space-y-4">
+      //           <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto" />
+      //           <h3 className="text-xl font-semibold">Access Restricted</h3>
+      //           <p className="text-muted-foreground max-w-md">
+      //             You need to be assigned as a club advisor to access this feature.
+      //           </p>
+      //         </div>
+      //       </div>
+      //     );
+      //   }
+      //   return <ClubAdvisor teacherData={teacherData} userTags={userTags} />;
+      
       case 'clubs':
-        return isFeatureAvailable('clubs')
-          ? <ClubAdvisor teacherData={teacherData} />
-          : <FeatureNotAvailable />;
+        if (!hasClubAdvisorAccess) {
+          return (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-4">
+                <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto" />
+                <h3 className="text-xl font-semibold">Access Restricted</h3>
+                <p className="text-muted-foreground max-w-md">
+                  You need to be assigned as a club advisor to access this feature.
+                </p>
+              </div>
+            </div>
+          );
+        }
+        return <ClubAdvisor teacherData={teacherData} userTags={userTags} />;
       
       case 'performance':
         return isFeatureAvailable('performance')
@@ -436,9 +505,26 @@ const Teacher = () => {
           : <FeatureNotAvailable />;
       
       case 'department':
-        return isFeatureAvailable('department')
-          ? <TeacherDepartment teacherData={teacherData}/>
-          : <FeatureNotAvailable />;
+        if (!hasDepartmentAccess) {
+          return (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-4">
+                <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto" />
+                <h3 className="text-xl font-semibold">Access Restricted</h3>
+                <p className="text-muted-foreground max-w-md">
+                  You need to be a department member to access this feature.
+                </p>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <TeacherDepartment 
+            teacherData={teacherData} 
+            userTags={userTags}
+            isHOD={isHOD}
+          />
+        );
       
       case 'support':
         return isFeatureAvailable('support')
@@ -450,13 +536,13 @@ const Teacher = () => {
     }
   };
 
-  if (loading || isLoadingFeatures) {
+  if (loading || tagsLoading || isLoadingFeatures) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-role-teacher mx-auto" />
           <p className="mt-4 text-muted-foreground">
-            {loading ? 'Loading faculty portal...' : 'Loading features...'}
+            {loading ? 'Loading faculty portal...' : tagsLoading ? 'Loading permissions...' : 'Loading features...'}
           </p>
         </div>
       </div>

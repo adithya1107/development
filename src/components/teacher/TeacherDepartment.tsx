@@ -33,9 +33,15 @@ import {
 
 interface TeacherDepartmentProps {
   teacherData: any;
+  userTags?: any[];
+  isHOD?: boolean;
 }
 
-const TeacherDepartment = ({ teacherData }: TeacherDepartmentProps) => {
+const TeacherDepartment = ({ 
+  teacherData, 
+  userTags, 
+  isHOD = false 
+}: TeacherDepartmentProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [loading, setLoading] = useState(true);

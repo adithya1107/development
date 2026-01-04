@@ -54,6 +54,10 @@ import StudentProfile from '@/pages/student_profile.tsx';
 import Furlong from '@/components/student/Furlong';
 import StudentCGPADashboard from '@/components/student/StudentCGPADashboard';
 
+// Import tag-based access control
+import { useUserTags } from '@/hooks/useUserTags';
+import StudentDepartment from '@/components/student/StudentDepartment';
+
 // Import dynamic feature loader
 import { loadUserFeatures, featuresToSidebarItems } from '@/lib/FeatureLoader';
 
@@ -97,7 +101,6 @@ const Student = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
-  const [hasClubAccess, setHasClubAccess] = useState(false);
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
@@ -105,6 +108,9 @@ const Student = () => {
   const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([]);
   const [availableFeatureKeys, setAvailableFeatureKeys] = useState<Set<string>>(new Set());
   const [isLoadingFeatures, setIsLoadingFeatures] = useState(true);
+
+  // Initialize user tags hook for access control
+  const { tags: userTags, loading: tagsLoading, hasTag, hasAnyTag } = useUserTags(studentData?.user_id || null);
 
   const notificationRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -141,39 +147,6 @@ const Student = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Function to check if user has club access
-  const checkClubAccess = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_tag_assignments')
-        .select(`
-          tag_id,
-          user_tags (
-            tag_name,
-            tag_category
-          )
-        `)
-        .eq('user_id', userId)
-        .eq('is_active', true);
-
-      if (error) {
-        console.error('Error fetching club access:', error);
-        setHasClubAccess(false);
-        return;
-      }
-
-      const hasClubTags = data?.some(
-        assignment => assignment.user_tags?.tag_category === 'student_role' && 
-                     assignment.user_tags?.tag_name === 'club_president'
-      );
-
-      setHasClubAccess(hasClubTags || false);
-    } catch (error) {
-      console.error('Error checking club access:', error);
-      setHasClubAccess(false);
-    }
-  };
-
   // Check user authentication and profile
   useEffect(() => {
     const checkUser = async () => {
@@ -197,8 +170,6 @@ const Student = () => {
               email: profile.email
             };
             setStudentData(userData);
-            
-            await checkClubAccess(profile.id);
             
             // Fetch profile photo
             const { data: studentProfile } = await supabase
@@ -251,7 +222,8 @@ const Student = () => {
           // Convert features to sidebar items
           const items = featuresToSidebarItems(features);
           
-          // Add club feature dynamically if user has access
+          // Add club feature if user has club tags
+          const hasClubAccess = hasAnyTag(['club_president', 'club_member', 'club_secretary', 'club_treasurer']);
           if (hasClubAccess) {
             const clubFeature = features.find(f => f.feature_key === 'clubs');
             if (clubFeature && !items.find(i => i.id === 'clubs')) {
@@ -264,11 +236,27 @@ const Student = () => {
               });
             }
           }
+
+          // Add department feature if user is class representative
+          const hasDepartmentAccess = hasTag('class_representative');
+          if (hasDepartmentAccess) {
+            const deptFeature = features.find(f => f.feature_key === 'department');
+            if (deptFeature && !items.find(i => i.id === 'department')) {
+              items.push({
+                id: 'department',
+                label: 'Department',
+                icon: Building,
+                enabled: true,
+                order: items.length
+              });
+            }
+          }
           
           setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
           
           const featureKeys = new Set(features.map(f => f.feature_key));
           if (hasClubAccess) featureKeys.add('clubs');
+          if (hasDepartmentAccess) featureKeys.add('department');
           setAvailableFeatureKeys(featureKeys);
           
           console.log(`Loaded ${items.length} features for student`);
@@ -289,7 +277,7 @@ const Student = () => {
     if (studentData?.college_id) {
       loadDynamicFeatures();
     }
-  }, [studentData?.college_id, hasClubAccess]);
+  }, [studentData?.college_id, userTags, tagsLoading]);
 
   // Fallback default features
   const getDefaultStudentFeatures = (): SidebarItem[] => {
@@ -503,6 +491,11 @@ const Student = () => {
 
   // MODIFIED: renderContent with feature availability checks
   const renderContent = () => {
+    // Check tag requirements
+    const hasClubAccess = hasAnyTag(['club_president', 'club_member', 'club_secretary', 'club_treasurer']);
+    const hasDepartmentAccess = hasTag('class_representative');
+    const isClubPresident = hasTag('club_president');
+
     // Check if current view is available
     if (!isFeatureAvailable(activeView) && activeView !== 'profile') {
       return (
@@ -571,9 +564,43 @@ const Student = () => {
           : <FeatureNotAvailable />;
       
       case 'clubs':
-        return (hasClubAccess && isFeatureAvailable('clubs'))
-          ? <ClubActivityCenter studentData={studentData} />
-          : <FeatureNotAvailable />;
+        if (!hasClubAccess) {
+          return (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-4">
+                <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto" />
+                <h3 className="text-xl font-semibold">Access Restricted</h3>
+                <p className="text-muted-foreground max-w-md">
+                  You need to be a club member to access this feature.
+                  Contact your club advisor for membership.
+                </p>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <ClubActivityCenter 
+            studentData={studentData} 
+            userTags={userTags}
+            isPresident={isClubPresident}
+          />
+        );
+      
+      case 'department':
+        if (!hasDepartmentAccess) {
+          return (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center space-y-4">
+                <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto" />
+                <h3 className="text-xl font-semibold">Access Restricted</h3>
+                <p className="text-muted-foreground max-w-md">
+                  Only class representatives can access the department section.
+                </p>
+              </div>
+            </div>
+          );
+        }
+        return <StudentDepartment studentData={studentData} userTags={userTags} />;
       
       case 'communication':
         return isFeatureAvailable('communication')
@@ -603,14 +630,12 @@ const Student = () => {
     }
   };
 
-  if (loading || isLoadingFeatures) {
+  if (loading || tagsLoading || isLoadingFeatures) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-role-student mx-auto" />
-          <p className="mt-4 text-muted-foreground">
-            {loading ? 'Loading student portal...' : 'Loading features...'}
-          </p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-role-student mx-auto"></div>
+          <p className="mt-4 text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
