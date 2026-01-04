@@ -29,6 +29,7 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
   const [showMobileSidebar, setShowMobileSidebar] = useState(true);
   const [lastReadTimestamps, setLastReadTimestamps] = useState({});
   const [typingUsers, setTypingUsers] = useState({});
+  const [realtimeStatus, setRealtimeStatus] = useState('disconnected');
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const textareaRef = useRef(null);
@@ -38,16 +39,26 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (studentData?.user_id) {
-      fetchChannels();
-      fetchContacts();
+    if (!studentData?.user_id) return;
+    
+    let isSubscribed = true;
+    
+    const initializeChat = async () => {
+      await fetchChannels();
+      await fetchContacts();
       loadLastReadTimestamps();
-      setupRealtimeSubscriptions();
       
-      return () => {
-        cleanupSubscriptions();
-      };
-    }
+      if (isSubscribed) {
+        setupRealtimeSubscriptions();
+      }
+    };
+    
+    initializeChat();
+    
+    return () => {
+      isSubscribed = false;
+      cleanupSubscriptions();
+    };
   }, [studentData?.user_id]);
 
   useEffect(() => {
@@ -65,50 +76,90 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
     }
   }, [messages, selectedChannel]);
 
-  const setupRealtimeSubscriptions = () => {
-    // Subscribe to all message changes
-    messageChannelRef.current = supabase
-      .channel('messages-all')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          handleNewMessage(payload.new);
-        }
-      )
-      .on('postgres_changes', 
-        { event: 'UPDATE', schema: 'public', table: 'messages' },
-        (payload) => {
-          handleMessageUpdate(payload.new);
-        }
-      )
-      .on('postgres_changes', 
-        { event: 'DELETE', schema: 'public', table: 'messages' },
-        (payload) => {
-          handleMessageDelete(payload.old);
-        }
-      )
-      .subscribe((status) => {
-        console.log('Message subscription status:', status);
-      });
-
-    // Subscribe to typing indicators
-    typingChannelRef.current = supabase
-      .channel('typing-indicators-global')
-      .on('broadcast', { event: 'typing' }, (payload) => {
-        handleTypingIndicator(payload);
-      })
-      .subscribe((status) => {
-        console.log('Typing subscription status:', status);
-      });
-  };
-
-  const cleanupSubscriptions = () => {
+  const setupRealtimeSubscriptions = async () => {
+    // Clean up existing subscriptions
     if (messageChannelRef.current) {
-      supabase.removeChannel(messageChannelRef.current);
+      await supabase.removeChannel(messageChannelRef.current);
       messageChannelRef.current = null;
     }
     if (typingChannelRef.current) {
-      supabase.removeChannel(typingChannelRef.current);
+      await supabase.removeChannel(typingChannelRef.current);
+      typingChannelRef.current = null;
+    }
+
+    // Check authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('No authenticated session');
+      setRealtimeStatus('error');
+      return;
+    }
+
+    // Create unique channel name
+    const messageChannelName = `messages-${studentData.user_id}-${Date.now()}`;
+    console.log('Creating message channel:', messageChannelName);
+
+    // Subscribe to messages
+    messageChannelRef.current = supabase
+      .channel(messageChannelName)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          console.log('New message received:', payload);
+          handleNewMessage(payload.new);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        (payload) => handleMessageUpdate(payload.new)
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'messages' },
+        (payload) => handleMessageDelete(payload.old)
+      )
+      .subscribe((status, err) => {
+        console.log('Subscription status:', status, err);
+        
+        if (status === 'SUBSCRIBED') {
+          setRealtimeStatus('connected');
+          console.log('✅ Successfully subscribed');
+          toast({
+            title: 'Connected',
+            description: 'Real-time messaging is active',
+            duration: 2000,
+          });
+        } else if (status === 'CHANNEL_ERROR') {
+          setRealtimeStatus('error');
+          console.error('Channel error:', err);
+        } else if (status === 'CLOSED') {
+          setRealtimeStatus('disconnected');
+          console.log('Channel closed, attempting reconnect...');
+          setTimeout(() => {
+            if (studentData?.user_id) setupRealtimeSubscriptions();
+          }, 2000);
+        }
+      });
+
+    // Subscribe to typing indicators
+    const typingChannelName = `typing-${studentData.user_id}-${Date.now()}`;
+    typingChannelRef.current = supabase
+      .channel(typingChannelName)
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        handleTypingIndicator(payload);
+      })
+      .subscribe();
+  };
+
+  const cleanupSubscriptions = async () => {
+    if (messageChannelRef.current) {
+      await supabase.removeChannel(messageChannelRef.current);
+      messageChannelRef.current = null;
+    }
+    if (typingChannelRef.current) {
+      await supabase.removeChannel(typingChannelRef.current);
       typingChannelRef.current = null;
     }
     if (typingTimeoutRef.current) {
@@ -591,6 +642,20 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
             <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Stay connected with your campus community</p>
           </div>
           <div className="flex items-center space-x-2">
+            {/* Connection Status */}
+            <div className="hidden sm:flex items-center space-x-2 mr-2 px-3 py-1 rounded-full bg-background">
+              <div className={`w-2 h-2 rounded-full ${
+                realtimeStatus === 'connected' ? 'bg-green-500 animate-pulse' : 
+                realtimeStatus === 'error' ? 'bg-red-500' :
+                'bg-yellow-500 animate-pulse'
+              }`} />
+              <span className="text-xs text-muted-foreground">
+                {realtimeStatus === 'connected' ? 'Connected' : 
+                 realtimeStatus === 'error' ? 'Error' :
+                 'Connecting...'}
+              </span>
+            </div>
+            
             <Dialog open={showNewChatDialog} onOpenChange={setShowNewChatDialog}>
               <DialogTrigger asChild>
                 <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs sm:text-sm">

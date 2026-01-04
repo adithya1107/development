@@ -43,6 +43,7 @@ import DepartmentManagement from '@/components/admin/DepartmentManagement';
 
 // Import dynamic feature loader
 import { loadUserFeatures, featuresToSidebarItems } from '@/lib/featureLoader';
+import StudentVerification from '@/components/admin/StudentVerification';
 
 interface TagFeature {
   feature_key: string;
@@ -65,7 +66,8 @@ interface SidebarItem {
 const TAG_FEATURE_MAP: Record<string, TagFeature[]> = {
   super_admin: [
     { feature_key: 'dashboard', feature_name: 'Dashboard', feature_route: '/admin/dashboard', icon: 'Activity', display_order: 0 },
-    { feature_key: 'users', feature_name: 'User Management', feature_route: '/admin/users', icon: 'Users', display_order: 1 },
+    { feature_key: 'users', feature_name: 'User Management', feature_route: '/admin/users', icon: 'Users', display_order: 0.2 },
+    { feature_key: 'student verification', feature_name: 'Student Verification', feature_route: '/admin/student-verification', icon: 'UserCircle', display_order: 0.3 },
     { feature_key: 'department', feature_name: 'Department Management', feature_route: '/admin/department', icon: 'Building', display_order: 1 },
     { feature_key: 'courses', feature_name: 'Course Management', feature_route: '/admin/courses', icon: 'BookOpen', display_order: 1.5 },
     { feature_key: 'enrollment', feature_name: 'Enrollment Management', feature_route: '/admin/enrollment', icon: 'Users', display_order: 2 },
@@ -80,7 +82,8 @@ const TAG_FEATURE_MAP: Record<string, TagFeature[]> = {
   ],
   user_admin: [
     { feature_key: 'dashboard', feature_name: 'Dashboard', feature_route: '/admin/dashboard', icon: 'Activity', display_order: 0 },
-    { feature_key: 'users', feature_name: 'User Management', feature_route: '/admin/users', icon: 'Users', display_order: 1 }
+    { feature_key: 'users', feature_name: 'User Management', feature_route: '/admin/users', icon: 'Users', display_order: 1 },
+    { feature_key: 'student verification', feature_name: 'Student Verification', feature_route: '/admin/student-verification', icon: 'UserCircle', display_order: 1.2 }
   ],
   financial_admin: [
     { feature_key: 'dashboard', feature_name: 'Dashboard', feature_route: '/admin/dashboard', icon: 'Activity', display_order: 0 },
@@ -540,6 +543,11 @@ const Admin = () => {
       case 'users':
         return isFeatureAvailable('users')
           ? <EnhancedUserManagement userProfile={userProfile} adminRoles={adminRoles} />
+          : <FeatureNotAvailable />;
+
+      case 'student verification':
+        return isFeatureAvailable('student verification')
+          ? <StudentVerification userProfile={userProfile} adminRoles={adminRoles} verificationMode={true} />
           : <FeatureNotAvailable />;
       
       case 'department':

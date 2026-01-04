@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -60,13 +59,14 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
 
       const enrolledCourseIds = enrollments?.map(e => e.course_id) || [];
 
-      // Fetch Alumni Events
+      // Fetch Alumni Events (upcoming only)
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
         .select('*')
         .eq('college_id', studentData.college_id)
         .eq('is_active', true)
-        .order('start_date', { ascending: false });
+        .gte('start_date', new Date().toISOString())
+        .order('start_date', { ascending: true });
 
       console.log('Alumni Events Query:', { 
         college_id: studentData.college_id, 
@@ -123,7 +123,7 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
         <h2 className="text-lg sm:text-xl md:text-2xl font-bold">Communication Center</h2>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">{announcements.length} Announcements</Badge>
-          <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">{alumniEvents.length} Alumni Events</Badge>
+          <Badge variant="outline" className="px-2 sm:px-3 py-1 text-xs sm:text-sm whitespace-nowrap">{alumniEvents.length} Upcoming Alumni Events</Badge>
         </div>
       </div>
 
@@ -136,7 +136,7 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
             </TabsTrigger>
             <TabsTrigger value="alumni-events" className="text-[10px] xs:text-xs sm:text-sm px-1 xs:px-2 sm:px-3 py-2">
               <Users className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0 pr-1" />
-              <span className="truncate">Alumni Events</span>
+              <span className="truncate">Upcoming Alumni Events</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -215,7 +215,7 @@ const Anouncements: React.FC<CommunicationCenterProps> = ({ studentData }) => {
             <Card>
               <CardContent className="text-center py-8">
                 <Users className="h-12 w-12  mx-auto mb-4" />
-                <p className=" text-sm sm:text-base">No alumni events right now</p>
+                <p className=" text-sm sm:text-base">No upcoming alumni events</p>
               </CardContent>
             </Card>
           ) : (

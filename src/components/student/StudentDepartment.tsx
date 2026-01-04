@@ -109,7 +109,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center space-y-4">
-          <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto" />
+          <AlertCircle className="w-16 h-16 mx-auto" />
           <h3 className="text-xl font-semibold">No Department Assigned</h3>
           <p className="text-muted-foreground max-w-md">
             You are not currently assigned to any department.
@@ -263,15 +263,15 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
       )}
 
       {/* Info Box */}
-      <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+      <Card>
         <CardContent className="pt-6">
           <div className="flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+            <AlertCircle className="w-5 h-5 mt-0.5" />
             <div className="space-y-1">
-              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+              <p className="text-sm font-medium">
                 Class Representative Access
               </p>
-              <p className="text-sm text-blue-700 dark:text-blue-300">
+              <p className="text-sm">
                 As a class representative, you can view department events and announcements.
                 For any updates or concerns, please contact your department HOD.
               </p>
