@@ -20,8 +20,8 @@ interface CollegeData {
 
 const MultiStepLogin = () => {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
-  const [collegeCode, setCollegeCode] = useState('');
+  const [step, setStep] = useState(2); // Start at step 2 (User Code)
+  const [collegeCode, setCollegeCode] = useState('TAPMI'); // Default to TAPMI
   const [userCode, setUserCode] = useState('');
   const [password, setPassword] = useState('');
   const [collegeData, setCollegeData] = useState<CollegeData | null>(null);
@@ -40,6 +40,39 @@ const MultiStepLogin = () => {
     generatePassword: '',
     confirmPassword: ''
   });
+
+  // Auto-load TAPMI college data on mount
+  useEffect(() => {
+    const loadTAPMIData = async () => {
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase.rpc('get_college_by_code', { college_code: 'TAPMI' });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          setCollegeData(data[0] as CollegeData);
+        } else {
+          toast({
+            title: 'Configuration Error',
+            description: 'TAPMI college data not found',
+            variant: 'destructive',
+          });
+        }
+      } catch (error) {
+        console.error('Error loading TAPMI data:', error);
+        toast({
+          title: 'Configuration Error',
+          description: 'Failed to load college data. Please try again.',
+          variant: 'destructive',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadTAPMIData();
+  }, []);
 
   // Set up auth state listener
   useEffect(() => {
@@ -153,45 +186,46 @@ const MultiStepLogin = () => {
     }
   };
 
-  const handleCollegeCodeSubmit = async () => {
-    if (!collegeCode) {
-      toast({
-        title: 'College Code Required',
-        description: 'Please enter your college code',
-        variant: 'destructive',
-      });
-      return;
-    }
+  // COMMENTED OUT - College code step is now skipped
+  // const handleCollegeCodeSubmit = async () => {
+  //   if (!collegeCode) {
+  //     toast({
+  //       title: 'College Code Required',
+  //       description: 'Please enter your college code',
+  //       variant: 'destructive',
+  //     });
+  //     return;
+  //   }
 
-    setIsLoading(true);
+  //   setIsLoading(true);
 
-    try {
-      const { data, error } = await supabase.rpc('get_college_by_code', { college_code: collegeCode });
+  //   try {
+  //     const { data, error } = await supabase.rpc('get_college_by_code', { college_code: collegeCode });
 
-      if (error) throw error;
+  //     if (error) throw error;
 
-      if (!data || data.length === 0) {
-        toast({
-          title: 'Invalid College Code',
-          description: 'No college found with this code',
-          variant: 'destructive',
-        });
-        return;
-      }
+  //     if (!data || data.length === 0) {
+  //       toast({
+  //         title: 'Invalid College Code',
+  //         description: 'No college found with this code',
+  //         variant: 'destructive',
+  //       });
+  //       return;
+  //     }
 
-      setCollegeData(data[0] as CollegeData);
-      setStep(2);
-    } catch (error) {
-      console.error('College code validation error:', error);
-      toast({
-        title: 'College Code Error',
-        description: 'Failed to validate college code. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  //     setCollegeData(data[0] as CollegeData);
+  //     setStep(2);
+  //   } catch (error) {
+  //     console.error('College code validation error:', error);
+  //     toast({
+  //       title: 'College Code Error',
+  //       description: 'Failed to validate college code. Please try again.',
+  //       variant: 'destructive',
+  //     });
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
 
   const handleUserCodeSubmit = async () => {
     if (!userCode) {
@@ -208,7 +242,7 @@ const MultiStepLogin = () => {
     try {
       // Get user email using the new secure function
       const { data, error } = await supabase.rpc('get_user_email', {
-        college_code: collegeData?.code || '',
+        college_code: 'TAPMI', // Always use TAPMI
         user_code: userCode
       });
 
@@ -411,11 +445,11 @@ const MultiStepLogin = () => {
   };
 
   const resetForm = () => {
-    setStep(1);
-    setCollegeCode('');
+    setStep(2); // Reset to step 2 (User Code)
+    setCollegeCode('TAPMI'); // Keep TAPMI as default
     setUserCode('');
     setPassword('');
-    setCollegeData(null);
+    // Don't reset collegeData as it should always be TAPMI
     setUserEmail('');
     setSignupData({
       firstName: '',
@@ -474,15 +508,15 @@ const MultiStepLogin = () => {
         {/* Hero Section - Compact for mobile */}
 <div className="text-center mb-4 sm:mb-6 animate-fade-in-up min-h-[140px] flex flex-col justify-center overflow-visible">
   <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-foreground mb-2 sm:mb-3 whitespace-nowrap px-2">
-    {collegeData ? collegeData.name : 'ColCord'}
+    {collegeData ? collegeData.name : 'TAPMI'}
   </h1>
 
   <div className="mt-3 sm:mt-4 h-[24px] flex items-center justify-center space-x-2">
-    {step > 1 && (
+    {step > 2 && (
       <>
         <div className="h-0.5 w-6 sm:w-8 bg-primary"></div>
         <span className="text-[10px] sm:text-xs text-muted-foreground font-medium whitespace-nowrap">
-          STEP {step - 1} OF 2
+          STEP {step - 2} OF 2
         </span>
         <div className="h-0.5 w-6 sm:w-8 bg-white-10"></div>
       </>
@@ -498,13 +532,12 @@ const MultiStepLogin = () => {
             <h3 className="text-xl text-center text-card-foreground font-semibold px-4">
               {!isSignUp ? (
                 <>
-                  {step === 1 && 'College Access'}
+                  {/* Step 1 is now skipped */}
                   {step === 2 && 'User Verification'}
                   {step === 3 && 'Secure Login'}
                 </>
               ) : (
                 <>
-                  {step === 1 && 'Select College'}
                   {step === 2 && 'Create Account'}
                 </>
               )}
@@ -513,7 +546,8 @@ const MultiStepLogin = () => {
 
           <div className="h-[240px] px-6 pt-6 pb-4 flex flex-col">
 
-            {!isSignUp && step === 1 && (
+            {/* STEP 1 - COLLEGE CODE IS NOW COMMENTED OUT AND SKIPPED */}
+            {/* {!isSignUp && step === 1 && (
               <div className="flex flex-col h-full">
                 <div className="flex flex-col gap-2 mb-4">
                   <Label htmlFor="collegeCode" className="text-base font-medium text-foreground h-[24px] flex items-center">
@@ -544,7 +578,7 @@ const MultiStepLogin = () => {
                 </Button>
                 <div className="h-10 w-full" />
               </div>
-            )}
+            )} */}
 
             {!isSignUp && step === 2 && (
               <div className="flex flex-col h-full">
@@ -575,13 +609,8 @@ const MultiStepLogin = () => {
                     </div>
                   ) : 'Continue'}
                 </Button>
-                <Button 
-                  onClick={() => setStep(1)} 
-                  variant="ghost"
-                  className="w-full text-base h-10"
-                >
-                  Back
-                </Button>
+                {/* Back button removed since there's no step 1 anymore */}
+                <div className="h-10 w-full" />
               </div>
             )}
 
