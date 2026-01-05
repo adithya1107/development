@@ -42,7 +42,7 @@ import TimetableManagement from '@/components/admin/TimetableManagement';
 import DepartmentManagement from '@/components/admin/DepartmentManagement';
 
 // Import dynamic feature loader
-import { loadUserFeatures, featuresToSidebarItems } from '@/lib/featureLoader';
+import { loadUserFeatures, featuresToSidebarItems } from '../lib/FeatureLoader';
 import StudentVerification from '@/components/admin/StudentVerification';
 
 interface TagFeature {

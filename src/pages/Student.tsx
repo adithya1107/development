@@ -59,7 +59,7 @@ import { useUserTags } from '@/hooks/useUserTags';
 import StudentDepartment from '@/components/student/StudentDepartment';
 
 // Import dynamic feature loader
-import { loadUserFeatures, featuresToSidebarItems } from '@/lib/FeatureLoader';
+import { loadUserFeatures, featuresToSidebarItems } from '../lib/FeatureLoader';
 
 // Type definitions
 type Notification = {

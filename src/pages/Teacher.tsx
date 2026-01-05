@@ -53,7 +53,7 @@ import ClubAdvisor from '@/components/teacher/ClubAdvisor';
 import TeacherCGPAManagement from '@/components/teacher/TeacherCGPAManagement';
 
 // Import dynamic feature loader
-import { loadUserFeatures, featuresToSidebarItems } from '@/lib/featureLoader';
+import { loadUserFeatures, featuresToSidebarItems } from '../lib/FeatureLoader';
 
 // Import tag-based access control
 import { useUserTags } from '@/hooks/useUserTags';

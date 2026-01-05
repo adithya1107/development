@@ -37,7 +37,7 @@ import { supabase } from '@/integrations/supabase/client';
 import ParentCommunicationHub from '@/components/parent/ParentCommunicationHub';
 
 // Import dynamic feature loader
-import { loadUserFeatures, featuresToSidebarItems } from '@/lib/featureLoader';
+import { loadUserFeatures, featuresToSidebarItems } from '../lib/FeatureLoader';
 
 interface SidebarItem {
   id: string;
