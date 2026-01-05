@@ -904,8 +904,8 @@ const Furlong = () => {
 
   // RENDER VIEWS
   const renderDiscover = () => (
-    <div className="space-y-4">
-      {!locationEnabled && (
+    <div className="space-y-3">
+      {/* {!locationEnabled && (
         <Alert className="border-yellow-500/50 bg-yellow-500/10">
           <MapPinned className="h-4 w-4 text-yellow-600" />
           <AlertDescription className="flex items-center justify-between">
@@ -924,7 +924,7 @@ const Furlong = () => {
             </Button>
           </AlertDescription>
         </Alert>
-      )}
+      )} */}
 
       <div className="flex items-center justify-between">
         <div>

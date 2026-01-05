@@ -1,9 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock, MapPin, AlertCircle, Users, Building2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { 
+  Calendar, Clock, MapPin, AlertCircle, Users, Building2, 
+  Loader2, Search, Wifi, WifiOff, Bell, CalendarDays,
+  ChevronRight, ExternalLink, Filter
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface StudentDepartmentProps {
   studentData: any;
@@ -18,14 +25,163 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
   const [department, setDepartment] = useState<any>(null);
   const [events, setEvents] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [realtimeStatus, setRealtimeStatus] = useState<'connected' | 'connecting' | 'disconnected' | 'error'>('connecting');
+  const [activeTab, setActiveTab] = useState('events');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'today' | 'this-week'>('upcoming');
+  
+  const eventsSubscriptionRef = useRef<any>(null);
+  const announcementsSubscriptionRef = useRef<any>(null);
 
   useEffect(() => {
     loadStudentDepartment();
+    
+    return () => {
+      cleanupSubscriptions();
+    };
   }, [studentData]);
+
+  useEffect(() => {
+    if (department?.id) {
+      subscribeToRealtimeUpdates();
+    }
+    
+    return () => {
+      cleanupSubscriptions();
+    };
+  }, [department?.id]);
+
+  const cleanupSubscriptions = () => {
+    console.log('🧹 Cleaning up subscriptions');
+    if (eventsSubscriptionRef.current) {
+      supabase.removeChannel(eventsSubscriptionRef.current);
+      eventsSubscriptionRef.current = null;
+    }
+    if (announcementsSubscriptionRef.current) {
+      supabase.removeChannel(announcementsSubscriptionRef.current);
+      announcementsSubscriptionRef.current = null;
+    }
+  };
+
+  const subscribeToRealtimeUpdates = async () => {
+    if (!department?.id) return;
+
+    console.log('📡 Setting up realtime subscriptions for department:', department.id);
+
+    // Subscribe to events
+    const eventsChannelName = `dept-events-${department.id}-${Date.now()}`;
+    eventsSubscriptionRef.current = supabase
+      .channel(eventsChannelName)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'department_events'
+      }, (payload) => {
+        console.log('📅 New event:', payload.new);
+        if ((payload.new as any).department_id === department.id) {
+          setEvents(prev => {
+            const exists = prev.some(e => e.id === payload.new.id);
+            if (exists) return prev;
+            return [payload.new as any, ...prev];
+          });
+          
+          toast({
+            title: '📅 New Event Added',
+            description: (payload.new as any).event_name,
+            duration: 4000,
+          });
+        }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'department_events'
+      }, (payload) => {
+        console.log('📝 Event updated:', payload.new);
+        if ((payload.new as any).department_id === department.id) {
+          setEvents(prev =>
+            prev.map(event =>
+              event.id === payload.new.id ? payload.new as any : event
+            )
+          );
+        }
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'department_events'
+      }, (payload) => {
+        console.log('🗑️ Event deleted:', payload.old);
+        setEvents(prev => prev.filter(event => event.id !== payload.old.id));
+      })
+      .subscribe((status) => {
+        console.log('📡 Events subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          setRealtimeStatus('connected');
+          console.log('✅ Successfully subscribed to events');
+        } else if (status === 'CHANNEL_ERROR') {
+          setRealtimeStatus('error');
+        }
+      });
+
+    // Subscribe to announcements
+    const announcementsChannelName = `dept-announcements-${department.id}-${Date.now()}`;
+    announcementsSubscriptionRef.current = supabase
+      .channel(announcementsChannelName)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'announcements'
+      }, (payload) => {
+        console.log('📢 New announcement:', payload.new);
+        if ((payload.new as any).department_id === department.id && (payload.new as any).is_active) {
+          setAnnouncements(prev => {
+            const exists = prev.some(a => a.id === payload.new.id);
+            if (exists) return prev;
+            return [payload.new as any, ...prev];
+          });
+          
+          toast({
+            title: '📢 New Announcement',
+            description: (payload.new as any).title,
+            duration: 5000,
+          });
+        }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'announcements'
+      }, (payload) => {
+        console.log('📝 Announcement updated:', payload.new);
+        if ((payload.new as any).department_id === department.id) {
+          setAnnouncements(prev =>
+            prev.map(ann =>
+              ann.id === payload.new.id ? payload.new as any : ann
+            ).filter(a => a.is_active)
+          );
+        }
+      })
+      .on('postgres_changes', {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'announcements'
+      }, (payload) => {
+        console.log('🗑️ Announcement deleted:', payload.old);
+        setAnnouncements(prev => prev.filter(ann => ann.id !== payload.old.id));
+      })
+      .subscribe((status) => {
+        console.log('📡 Announcements subscription status:', status);
+      });
+
+    console.log('✅ Realtime subscriptions active');
+  };
 
   const loadStudentDepartment = async () => {
     try {
       setLoading(true);
+
+      console.log('📋 Loading student department...');
 
       // Get student's department from student table
       const { data: studentInfo, error: studentError } = await supabase
@@ -46,6 +202,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
       if (studentError) throw studentError;
 
       if (!studentInfo?.department_id) {
+        console.log('⚠️ No department assigned');
         toast({
           title: 'No Department',
           description: 'You are not assigned to any department.',
@@ -55,6 +212,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         return;
       }
 
+      console.log('✅ Department found:', studentInfo.departments);
       setDepartment(studentInfo.departments);
 
       // Load department events
@@ -66,24 +224,26 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         .order('start_date', { ascending: true });
 
       if (eventsError) {
-        console.error('Error loading events:', eventsError);
+        console.error('❌ Error loading events:', eventsError);
       } else {
+        console.log('✅ Events loaded:', eventsData?.length || 0);
         setEvents(eventsData || []);
       }
 
-      // Load department announcements if table exists
+      // Load department announcements
       const { data: announcementsData } = await supabase
         .from('announcements')
         .select('*')
         .eq('department_id', studentInfo.department_id)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(20);
 
+      console.log('✅ Announcements loaded:', announcementsData?.length || 0);
       setAnnouncements(announcementsData || []);
 
     } catch (error) {
-      console.error('Error loading department:', error);
+      console.error('❌ Error loading department:', error);
       toast({
         title: 'Error',
         description: 'Failed to load department information',
@@ -94,12 +254,108 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     }
   };
 
+  const getConnectionStatusIcon = () => {
+    switch (realtimeStatus) {
+      case 'connected':
+        return <Wifi className="h-4 w-4 text-green-500" />;
+      case 'disconnected':
+        return <WifiOff className="h-4 w-4 text-gray-500" />;
+      case 'error':
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'connecting':
+        return <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />;
+    }
+  };
+
+  const getFilteredEvents = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    let filtered = events;
+
+    // Apply time filter
+    if (eventFilter === 'today') {
+      filtered = filtered.filter(event => {
+        const eventDate = new Date(event.start_date);
+        return eventDate.toDateString() === today.toDateString();
+      });
+    } else if (eventFilter === 'this-week') {
+      filtered = filtered.filter(event => {
+        const eventDate = new Date(event.start_date);
+        return eventDate >= today && eventDate <= weekFromNow;
+      });
+    } else if (eventFilter === 'upcoming') {
+      filtered = filtered.filter(event => {
+        const eventDate = new Date(event.start_date);
+        return eventDate >= today;
+      });
+    }
+
+    // Apply search filter
+    if (searchQuery) {
+      filtered = filtered.filter(event =>
+        event.event_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        event.location?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    return filtered;
+  };
+
+  const getFilteredAnnouncements = () => {
+    if (!searchQuery) return announcements;
+    
+    return announcements.filter(ann =>
+      ann.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ann.content?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  };
+
+  const formatEventDate = (startDate: string, endDate?: string) => {
+    const start = new Date(startDate);
+    const end = endDate ? new Date(endDate) : null;
+    
+    if (!end || start.toDateString() === end.toDateString()) {
+      return start.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    }
+    
+    return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  };
+
+  const getEventTypeBadge = (type: string) => {
+    const badges = {
+      workshop: { variant: 'default' as const, color: 'bg-blue-500' },
+      seminar: { variant: 'secondary' as const, color: 'bg-purple-500' },
+      meeting: { variant: 'outline' as const, color: 'bg-gray-500' },
+      conference: { variant: 'default' as const, color: 'bg-green-500' },
+      default: { variant: 'default' as const, color: 'bg-gray-500' }
+    };
+    
+    return badges[type as keyof typeof badges] || badges.default;
+  };
+
+  const getPriorityBadge = (priority: string) => {
+    const badges = {
+      high: 'destructive' as const,
+      medium: 'default' as const,
+      low: 'secondary' as const
+    };
+    
+    return badges[priority as keyof typeof badges] || 'secondary' as const;
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground">Loading department information...</p>
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-16 w-16 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-foreground/70">Loading department information...</p>
         </div>
       </div>
     );
@@ -107,10 +363,10 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
   if (!department) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center space-y-4">
-          <AlertCircle className="w-16 h-16 mx-auto" />
-          <h3 className="text-xl font-semibold">No Department Assigned</h3>
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-xl font-semibold mb-2">No Department Assigned</h3>
           <p className="text-muted-foreground max-w-md">
             You are not currently assigned to any department.
             Please contact your academic advisor.
@@ -120,165 +376,293 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     );
   }
 
+  const filteredEvents = getFilteredEvents();
+  const filteredAnnouncements = getFilteredAnnouncements();
+
   return (
-    <div className="space-y-6 p-6">
-      {/* Department Header */}
-      <Card className="border-2 border-primary/20">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-3 bg-primary/10 rounded-lg">
-                <Building2 className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <CardTitle className="text-2xl">{department.name}</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Department Code: {department.code}
-                </p>
-              </div>
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      {/* Header */}
+      <div className="bg-sidebar-background border-b border-border px-4 sm:px-6 py-3 sm:py-4 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Building2 className="w-6 h-6 text-primary" />
             </div>
-            <Badge variant="secondary" className="text-sm">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground">
+                {department.name}
+              </h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                {department.code} • Class Representative View
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* Connection Status */}
+            <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg border ${
+              realtimeStatus === 'connected' ? 'bg-green-500/10 border-green-500/20' :
+              realtimeStatus === 'error' ? 'bg-red-500/10 border-red-500/20' :
+              'bg-yellow-500/10 border-yellow-500/20'
+            }`}>
+              {getConnectionStatusIcon()}
+              <span className="text-xs font-medium capitalize hidden sm:inline">
+                {realtimeStatus}
+              </span>
+            </div>
+
+            {/* Role Badge */}
+            <Badge variant="secondary" className="hidden sm:flex">
               <Users className="w-3 h-3 mr-1" />
-              Class Representative
+              Class Rep
             </Badge>
           </div>
-        </CardHeader>
-        {department.description && (
-          <CardContent>
-            <p className="text-muted-foreground">{department.description}</p>
-          </CardContent>
-        )}
-      </Card>
+        </div>
+      </div>
 
-      {/* Department Events */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Calendar className="w-5 h-5" />
-            <span>Upcoming Department Events</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {events.length === 0 ? (
-            <div className="text-center py-8">
-              <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-              <p className="text-muted-foreground">No upcoming events scheduled</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {events.map((event) => (
-                <div 
-                  key={event.id} 
-                  className="p-4 border rounded-lg hover:bg-accent/50 transition-colors space-y-3"
-                >
-                  <div className="flex items-start justify-between">
-                    <h3 className="font-semibold text-lg">{event.event_name}</h3>
-                    <Badge variant={
-                      event.event_type === 'workshop' ? 'default' :
-                      event.event_type === 'seminar' ? 'secondary' :
-                      event.event_type === 'meeting' ? 'outline' : 'default'
-                    }>
-                      {event.event_type}
-                    </Badge>
-                  </div>
-                  
-                  {event.description && (
-                    <p className="text-sm text-muted-foreground">{event.description}</p>
-                  )}
-                  
-                  <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" />
-                      <span>
-                        {new Date(event.start_date).toLocaleDateString()} 
-                        {event.end_date && event.start_date !== event.end_date && 
-                          ` - ${new Date(event.end_date).toLocaleDateString()}`}
-                      </span>
-                    </div>
-                    {event.location && (
-                      <div className="flex items-center gap-1">
-                        <MapPin className="w-4 h-4" />
-                        <span>{event.location}</span>
-                      </div>
-                    )}
-                    {event.start_time && (
-                      <div className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
-                        <span>{event.start_time}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {event.max_participants && (
-                    <div className="text-xs text-muted-foreground">
-                      Max Participants: {event.max_participants}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Department Announcements */}
-      {announcements.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <AlertCircle className="w-5 h-5" />
-              <span>Department Announcements</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {announcements.map((announcement) => (
-                <div 
-                  key={announcement.id} 
-                  className="p-4 border rounded-lg space-y-2"
-                >
-                  <div className="flex items-start justify-between">
-                    <h3 className="font-semibold">{announcement.title}</h3>
-                    {announcement.priority && (
-                      <Badge variant={
-                        announcement.priority === 'high' ? 'destructive' :
-                        announcement.priority === 'medium' ? 'default' : 'secondary'
-                      }>
-                        {announcement.priority}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {announcement.content}
-                  </p>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="w-3 h-3" />
-                    {new Date(announcement.created_at).toLocaleString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Description Banner (if exists) */}
+      {department.description && (
+        <div className="bg-accent/50 border-b border-border px-6 py-3 flex-shrink-0">
+          <p className="text-sm text-foreground/80">{department.description}</p>
+        </div>
       )}
 
-      {/* Info Box */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 mt-0.5" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium">
-                Class Representative Access
-              </p>
-              <p className="text-sm">
-                As a class representative, you can view department events and announcements.
-                For any updates or concerns, please contact your department HOD.
-              </p>
+      {/* Main Content */}
+      <div className="flex-1 overflow-hidden min-h-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+          {/* Tab Navigation */}
+          <div className="border-b border-border bg-sidebar-background px-6 py-3 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <TabsList>
+                <TabsTrigger value="events" className="relative">
+                  <CalendarDays className="w-4 h-4 mr-2" />
+                  Events
+                  {events.length > 0 && (
+                    <Badge variant="secondary" className="ml-2 h-5 px-1.5">
+                      {events.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="announcements" className="relative">
+                  <Bell className="w-4 h-4 mr-2" />
+                  Announcements
+                  {announcements.length > 0 && (
+                    <Badge variant="secondary" className="ml-2 h-5 px-1.5">
+                      {announcements.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Search */}
+              <div className="relative w-64 hidden md:block">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={`Search ${activeTab}...`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 bg-input border-border text-foreground"
+                />
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+
+          {/* Events Tab */}
+          <TabsContent value="events" className="flex-1 overflow-y-auto p-6 m-0">
+            {/* Event Filters */}
+            <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+              <Button 
+                variant={eventFilter === 'upcoming' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setEventFilter('upcoming')}
+              >
+                Upcoming
+              </Button>
+              <Button 
+                variant={eventFilter === 'today' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setEventFilter('today')}
+              >
+                Today
+              </Button>
+              <Button 
+                variant={eventFilter === 'this-week' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setEventFilter('this-week')}
+              >
+                This Week
+              </Button>
+              <Button 
+                variant={eventFilter === 'all' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setEventFilter('all')}
+              >
+                All
+              </Button>
+            </div>
+
+            {filteredEvents.length === 0 ? (
+              <div className="flex items-center justify-center h-96">
+                <div className="text-center">
+                  <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-semibold mb-2">
+                    {searchQuery ? 'No matching events' : 'No events scheduled'}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {searchQuery 
+                      ? 'Try a different search term' 
+                      : 'Check back later for upcoming department events'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredEvents.map((event) => (
+                  <Card 
+                    key={event.id} 
+                    className="hover:shadow-lg transition-all cursor-pointer border-l-4 hover:border-primary"
+                    style={{ borderLeftColor: getEventTypeBadge(event.event_type).color }}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <CardTitle className="text-lg line-clamp-2">
+                          {event.event_name}
+                        </CardTitle>
+                        <Badge variant={getEventTypeBadge(event.event_type).variant}>
+                          {event.event_type}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {event.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-2">
+                          {event.description}
+                        </p>
+                      )}
+                      
+                      <div className="space-y-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">
+                            {formatEventDate(event.start_date, event.end_date)}
+                          </span>
+                        </div>
+                        
+                        {event.start_time && (
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 flex-shrink-0" />
+                            <span>{event.start_time}</span>
+                          </div>
+                        )}
+                        
+                        {event.location && (
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-4 h-4 flex-shrink-0" />
+                            <span className="truncate">{event.location}</span>
+                          </div>
+                        )}
+                        
+                        {event.max_participants && (
+                          <div className="flex items-center gap-2">
+                            <Users className="w-4 h-4 flex-shrink-0" />
+                            <span>Max: {event.max_participants} participants</span>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Announcements Tab */}
+          <TabsContent value="announcements" className="flex-1 overflow-y-auto p-6 m-0">
+            {filteredAnnouncements.length === 0 ? (
+              <div className="flex items-center justify-center h-96">
+                <div className="text-center">
+                  <Bell className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-semibold mb-2">
+                    {searchQuery ? 'No matching announcements' : 'No announcements'}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {searchQuery 
+                      ? 'Try a different search term' 
+                      : 'Check back later for department announcements'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredAnnouncements.map((announcement) => (
+                  <Card 
+                    key={announcement.id} 
+                    className="hover:shadow-md transition-all"
+                  >
+                    <CardContent className="pt-6">
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="font-semibold text-lg flex-1">
+                            {announcement.title}
+                          </h3>
+                          {announcement.priority && (
+                            <Badge variant={getPriorityBadge(announcement.priority)}>
+                              {announcement.priority}
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {announcement.content}
+                        </p>
+                        
+                        <div className="flex items-center justify-between pt-2 border-t border-border">
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Clock className="w-3 h-3" />
+                            <span>
+                              {new Date(announcement.created_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </span>
+                          </div>
+                          
+                          {announcement.link && (
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0"
+                              onClick={() => window.open(announcement.link, '_blank')}
+                            >
+                              View Details
+                              <ExternalLink className="w-3 h-3 ml-1" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {/* Info Banner */}
+      <div className="bg-accent/50 border-t border-border px-6 py-3 flex-shrink-0">
+        <div className="flex items-center gap-3 text-sm">
+          <AlertCircle className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+          <p className="text-muted-foreground">
+            <strong className="text-foreground">Class Representative Access:</strong>{' '}
+            You can view all department events and announcements. For updates or concerns, 
+            contact your department HOD.
+          </p>
+        </div>
+      </div>
     </div>
   );
 };

@@ -134,10 +134,10 @@ const Marketplace = ({ onViewProduct, onSellClick, onMyListingsClick }) => {
   };
 
   return (
-    <div className="space-y-4 sm:space-y-6 p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="space-y-3 sm:space-y-6 max-w-6xl">
       {/* Header Card */}
       <div className="card-minimal glass-effect border-primary/20">
-        <div className="p-6">
+        <div>
           <div className="flex justify-between items-start mb-6">
             <div>
               <h2 className="text-2xl font-bold text-foreground mb-2">Student Marketplace</h2>
