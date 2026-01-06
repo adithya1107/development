@@ -10,62 +10,150 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 
 const TeacherCGPAManagement = ({ teacherData }) => {
-  const [courses, setCourses] = useState([]);
-  const [selectedCourse, setSelectedCourse] = useState("");
   const [students, setStudents] = useState([]);
   const [gradeScale, setGradeScale] = useState([]);
-  const [selectedStudent, setSelectedStudent] = useState("");
+  const [selectedStudent, setSelectedStudent] = useState(undefined);
   const [gradeData, setGradeData] = useState({
-    percentage: 0,
-    grade_letter: '',
-    grade_point: 0,
-    academic_year: new Date().getFullYear().toString(),
-    semester: 'Fall'
+    academic_year: "",
+    semester: ""
   });
-  const [isSaving, setIsSaving] = useState(false);
-  const [existingGrade, setExistingGrade] = useState(null);
+  const [studentCGPAData, setStudentCGPAData] = useState(null);
+  const [availableYears, setAvailableYears] = useState([]);
+  const [availableSemesters, setAvailableSemesters] = useState([]);
 
   useEffect(() => {
-    fetchCourses();
+    fetchStudents();
     fetchGradeScale();
   }, []);
 
   useEffect(() => {
-    if (selectedCourse) {
-      fetchStudents();
-
-      // When a course is selected, default academic year and semester to the course
-      const course = courses.find(c => c.id === selectedCourse);
-      if (course) {
-        setGradeData(prev => ({
-          ...prev,
-          academic_year: course.academic_year || prev.academic_year,
-          semester: course.semester || prev.semester
-        }));
-      }
+    if (selectedStudent) {
+      fetchAvailableYearsAndSemesters();
+      setGradeData({ academic_year: "", semester: "" });
+      setStudentCGPAData(null);
+    } else {
+      setAvailableYears([]);
+      setAvailableSemesters([]);
+      setGradeData({ academic_year: "", semester: "" });
+      setStudentCGPAData(null);
     }
-  }, [selectedCourse, courses]);
+  }, [selectedStudent]);
 
   useEffect(() => {
-    if (selectedCourse && selectedStudent) {
-      fetchExistingCourseGrade();
+    if (selectedStudent && gradeData.academic_year && gradeData.semester) {
+      fetchStudentCGPA();
+    } else {
+      setStudentCGPAData(null);
     }
-  }, [selectedCourse, selectedStudent, gradeData.academic_year, gradeData.semester]);
+  }, [selectedStudent, gradeData.academic_year, gradeData.semester]);
 
-  const fetchCourses = async () => {
+  const fetchStudents = async () => {
     try {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) return;
 
-      const { data } = await supabase
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("college_id")
+        .eq("id", user.user.id)
+        .single();
+
+      if (!profile) return;
+
+      // Get all courses from the same college
+      const { data: courses } = await supabase
         .from("courses")
-        .select("*")
-        .eq("instructor_id", user.user.id)
-        .eq("is_active", true);
-      
-      setCourses(data || []);
+        .select("id")
+        .eq("college_id", profile.college_id);
+
+      if (!courses || courses.length === 0) {
+        console.log('No courses found for college');
+        setStudents([]);
+        return;
+      }
+
+      const courseIds = courses.map(c => c.id);
+
+      // Get unique students enrolled in any course from this college
+      const { data: enrollments, error } = await supabase
+        .from("enrollments")
+        .select(`
+          student_id,
+          user_profiles!enrollments_student_id_fkey (
+            id,
+            first_name,
+            last_name,
+            email
+          )
+        `)
+        .in("course_id", courseIds)
+        .eq("status", "enrolled");
+
+      if (error) {
+        console.error('Error fetching students:', error);
+        return;
+      }
+
+      if (!enrollments || enrollments.length === 0) {
+        console.log('No enrollments found');
+        setStudents([]);
+        return;
+      }
+
+      // Get unique students
+      const uniqueStudents = Array.from(
+        new Map(
+          enrollments
+            .map((e: any) => e.user_profiles)
+            .filter(Boolean)
+            .map((student: any) => [student.id, student])
+        ).values()
+      );
+
+      console.log('Fetched students:', uniqueStudents);
+      setStudents(uniqueStudents);
     } catch (error) {
-      console.error('Error fetching courses:', error);
+      console.error('Error fetching students:', error);
+    }
+  };
+
+  const fetchAvailableYearsAndSemesters = async () => {
+    if (!selectedStudent) return;
+
+    try {
+      const { data: grades, error } = await supabase
+        .from("course_grades")
+        .select("academic_year, semester")
+        .eq("student_id", selectedStudent);
+
+      if (error) {
+        console.error('Error fetching years and semesters:', error);
+        return;
+      }
+
+      if (!grades || grades.length === 0) {
+        setAvailableYears([]);
+        setAvailableSemesters([]);
+        toast({
+          title: "No Data",
+          description: "This student has no grade records yet.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Extract unique years
+      const years = [...new Set(grades.map(g => g.academic_year))].sort();
+      setAvailableYears(years);
+
+      // Extract unique semesters
+      const semesters = [...new Set(grades.map(g => g.semester))];
+      setAvailableSemesters(semesters);
+
+      console.log('Available years:', years);
+      console.log('Available semesters:', semesters);
+    } catch (error) {
+      console.error('Error fetching years and semesters:', error);
     }
   };
 
@@ -95,195 +183,79 @@ const TeacherCGPAManagement = ({ teacherData }) => {
     }
   };
 
-  const fetchStudents = async () => {
-    if (!selectedCourse) return;
+  const fetchStudentCGPA = async () => {
+    if (!selectedStudent || !gradeData.academic_year || !gradeData.semester) return;
 
     try {
-      const { data: enrollments } = await supabase
-        .from("enrollments")
+      // Fetch course grades for the selected student, year, and semester
+      const { data: courseGrades } = await supabase
+        .from("course_grades")
         .select(`
-          student_id,
-          user_profiles!enrollments_student_id_fkey (
-            id,
-            first_name,
-            last_name,
-            email
+          *,
+          courses (
+            course_code,
+            course_name,
+            credits
           )
         `)
-        .eq("course_id", selectedCourse)
-        .eq("status", "enrolled");
-
-      if (!enrollments) return;
-
-      const studentProfiles = enrollments
-        .map((e) => e.user_profiles)
-        .filter(Boolean);
-      setStudents(studentProfiles);
-    } catch (error) {
-      console.error('Error fetching students:', error);
-    }
-  };
-
-  const fetchExistingCourseGrade = async () => {
-    if (!selectedCourse || !selectedStudent) return;
-
-    try {
-      const { data } = await supabase
-        .from("course_grades")
-        .select("*")
-        .eq("course_id", selectedCourse)
         .eq("student_id", selectedStudent)
         .eq("academic_year", gradeData.academic_year)
-        .eq("semester", gradeData.semester)
-        .maybeSingle();
+        .eq("semester", gradeData.semester);
 
-      if (data) {
-        setExistingGrade(data);
-        setGradeData({
-          percentage: data.percentage,
-          grade_letter: data.grade_letter,
-          grade_point: data.grade_point,
-          academic_year: data.academic_year,
-          semester: data.semester
-        });
-      } else {
-        setExistingGrade(null);
-      }
-    } catch (error) {
-      console.error('Error fetching existing grade:', error);
-    }
-  };
-
-  const calculateGradeFromPercentage = (percentage) => {
-    const percentageNum = parseFloat(percentage) || 0;
-    const grade = gradeScale.find(
-      (g) => percentageNum >= g.min_percentage && percentageNum <= g.max_percentage
-    );
-    
-    // Always update percentage, only update grade if found
-    if (grade) {
-      setGradeData(prev => ({
-        ...prev,
-        percentage: percentageNum,
-        grade_letter: grade.grade_letter,
-        grade_point: grade.grade_point
-      }));
-    } else {
-      // Update only percentage, clear grade if no match
-      setGradeData(prev => ({
-        ...prev,
-        percentage: percentageNum,
-        grade_letter: '',
-        grade_point: 0
-      }));
-    }
-  };
-
-  const saveCourseGrade = async () => {
-    if (!selectedCourse || !selectedStudent) {
-      toast({
-        title: "Error",
-        description: "Please select a course and student.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (gradeData.percentage < 0 || gradeData.percentage > 100) {
-      toast({
-        title: "Error",
-        description: "Percentage must be between 0 and 100.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) return;
-
-      const selectedCourseData = courses.find(c => c.id === selectedCourse);
-      const isPassed = gradeData.grade_point >= 4; // Assuming 4 is passing grade
-
-      const courseGradeData = {
-        student_id: selectedStudent,
-        course_id: selectedCourse,
-        academic_year: gradeData.academic_year,
-        semester: gradeData.semester,
-        total_marks: gradeData.percentage,
-        max_marks: 100,
-        percentage: gradeData.percentage,
-        grade_letter: gradeData.grade_letter,
-        grade_point: gradeData.grade_point,
-        credits: selectedCourseData?.credits || 0,
-        is_completed: true,
-        is_passed: isPassed,
-        recorded_by: user.user.id,
-        recorded_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Use upsert with the unique constraint
-      const { error } = await supabase
-        .from("course_grades")
-        .upsert(courseGradeData, {
-          onConflict: 'student_id,course_id,academic_year,semester',
-          ignoreDuplicates: false
-        })
-        .select();
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Course grade saved successfully! CGPA will be updated automatically.",
-      });
-
-      await fetchExistingCourseGrade();
-    } catch (error) {
-      console.error('Error saving grade:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to save grade.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const fetchAutoCalculatedGrade = async () => {
-    if (!selectedCourse || !selectedStudent) return;
-
-    try {
-      const { data, error } = await supabase.rpc('calculate_course_marks', {
-        p_student_id: selectedStudent,
-        p_course_id: selectedCourse
-      });
-
-      if (error) throw error;
-
-      if (data && data.length > 0) {
-        const marks = data[0];
-        calculateGradeFromPercentage(marks.percentage);
-        
+      if (!courseGrades || courseGrades.length === 0) {
+        setStudentCGPAData(null);
         toast({
-          title: "Auto-calculated Grade",
-          description: `Based on quizzes and assessments: ${marks.percentage.toFixed(2)}%`,
-        });
-      } else {
-        toast({
-          title: "No Assessment Data",
-          description: "No quizzes or assessments found for this student in this course.",
+          title: "No Data",
+          description: "No course grades found for the selected student, year, and semester.",
           variant: "destructive",
         });
+        return;
       }
+
+      // Calculate SGPA for this semester
+      let totalCredits = 0;
+      let totalGradePoints = 0;
+
+      courseGrades.forEach(grade => {
+        const credits = grade.credits || 0;
+        totalCredits += credits;
+        totalGradePoints += (grade.grade_point * credits);
+      });
+
+      const sgpa = totalCredits > 0 ? (totalGradePoints / totalCredits) : 0;
+
+      // Fetch overall CGPA (across all semesters)
+      const { data: allGrades } = await supabase
+        .from("course_grades")
+        .select("grade_point, credits")
+        .eq("student_id", selectedStudent);
+
+      let allTotalCredits = 0;
+      let allTotalGradePoints = 0;
+
+      if (allGrades) {
+        allGrades.forEach(grade => {
+          const credits = grade.credits || 0;
+          allTotalCredits += credits;
+          allTotalGradePoints += (grade.grade_point * credits);
+        });
+      }
+
+      const cgpa = allTotalCredits > 0 ? (allTotalGradePoints / allTotalCredits) : 0;
+
+      setStudentCGPAData({
+        courseGrades,
+        sgpa: sgpa.toFixed(2),
+        cgpa: cgpa.toFixed(2),
+        totalCredits,
+        allTotalCredits
+      });
+
     } catch (error) {
-      console.error('Error fetching auto-calculated grade:', error);
+      console.error('Error fetching student CGPA:', error);
       toast({
         title: "Error",
-        description: "Failed to calculate grade from assessments.",
+        description: "Failed to fetch student CGPA data.",
         variant: "destructive",
       });
     }
@@ -299,32 +271,16 @@ const TeacherCGPAManagement = ({ teacherData }) => {
 
   return (
     <div className="space-y-6">
-      {/* Course and Student Selection */}
+      {/* Student, Year, and Semester Selection */}
       <Card className="glass-effect border-primary/20">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-foreground">
             <GraduationCap className="w-5 h-5 text-accent" />
-            CGPA Grade Management
+            CGPA Calculator
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="course-select">Select Course</Label>
-              <Select value={selectedCourse} onValueChange={setSelectedCourse}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a course" />
-                </SelectTrigger>
-                <SelectContent>
-                  {courses?.map((course) => (
-                    <SelectItem key={course.id} value={course.id}>
-                      {course.course_code} - {course.course_name} ({course.credits} credits)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="student-select">Select Student</Label>
               <Select value={selectedStudent} onValueChange={setSelectedStudent}>
@@ -340,219 +296,186 @@ const TeacherCGPAManagement = ({ teacherData }) => {
                 </SelectContent>
               </Select>
             </div>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="academic-year">Academic Year</Label>
-              {/* If the selected course has an academic_year, lock it (read-only). Otherwise allow manual entry. */}
-              <Input
-                id="academic-year"
-                type="text"
-                value={gradeData.academic_year}
-                onChange={(e) => setGradeData(prev => ({ ...prev, academic_year: e.target.value }))}
-                placeholder="2024"
-                disabled={!!(courses.find(c => c.id === selectedCourse)?.academic_year)}
-              />
+              <Select 
+                value={gradeData.academic_year} 
+                onValueChange={(value) => setGradeData(prev => ({ ...prev, academic_year: value }))}
+                disabled={!selectedStudent || availableYears.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={selectedStudent ? (availableYears.length === 0 ? "No data available" : "Select year") : "Select student first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableYears.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="semester">Semester</Label>
-              {/* If course defines a semester, only allow that semester and disable changing it to avoid invalid selections */}
-              {courses.find(c => c.id === selectedCourse)?.semester ? (
-                <Select
-                  value={gradeData.semester}
-                  onValueChange={(value) => setGradeData(prev => ({ ...prev, semester: value }))}
-                  disabled
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select semester" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={courses.find(c => c.id === selectedCourse)?.semester}>
-                      {courses.find(c => c.id === selectedCourse)?.semester}
+              <Select 
+                value={gradeData.semester} 
+                onValueChange={(value) => setGradeData(prev => ({ ...prev, semester: value }))}
+                disabled={!selectedStudent || availableSemesters.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={selectedStudent ? (availableSemesters.length === 0 ? "No data available" : "Select semester") : "Select student first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSemesters.map((semester) => (
+                    <SelectItem key={semester} value={semester}>
+                      {semester}
                     </SelectItem>
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Select 
-                  value={gradeData.semester} 
-                  onValueChange={(value) => setGradeData(prev => ({ ...prev, semester: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select semester" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Fall">Fall</SelectItem>
-                    <SelectItem value="Spring">Spring</SelectItem>
-                    <SelectItem value="Summer">Summer</SelectItem>
-                    <SelectItem value="Winter">Winter</SelectItem>
-                    <SelectItem value="Semester 1">Semester 1</SelectItem>
-                    <SelectItem value="Semester 2">Semester 2</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Grade Entry Section */}
-      {selectedCourse && selectedStudent && (
+      {/* CGPA Display Section */}
+      {selectedStudent && studentCGPAData && (
         <>
-          {existingGrade && (
-            <Card className="glass-effect border-yellow-500/30 bg-yellow-500/5">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-yellow-500 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-foreground">Existing Grade Found</p>
-                    <p className="text-sm text-muted-foreground">
-                      Current grade: <span className={`font-bold ${getGradeColor(existingGrade.grade_point)}`}>
-                        {existingGrade.grade_letter}
-                      </span> ({existingGrade.percentage}%) - Updating will recalculate CGPA
-                    </p>
-                  </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* SGPA Card */}
+            <Card className="glass-effect border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <Calculator className="w-5 h-5 text-accent" />
+                  Semester GPA (SGPA)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center">
+                  <p className="text-6xl font-bold text-primary mb-2">
+                    {studentCGPAData.sgpa}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {gradeData.semester} {gradeData.academic_year}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Total Credits: {studentCGPAData.totalCredits}
+                  </p>
                 </div>
               </CardContent>
             </Card>
-          )}
 
+            {/* CGPA Card */}
+            <Card className="glass-effect border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <TrendingUp className="w-5 h-5 text-accent" />
+                  Cumulative GPA (CGPA)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center">
+                  <p className="text-6xl font-bold text-primary mb-2">
+                    {studentCGPAData.cgpa}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Overall Performance
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Total Credits: {studentCGPAData.allTotalCredits}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Course Grades Table */}
           <Card className="glass-effect border-primary/20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-foreground">
-                <Calculator className="w-5 h-5 text-accent" />
-                Grade Calculator
+                <Award className="w-5 h-5 text-accent" />
+                Course Grades for {gradeData.semester} {gradeData.academic_year}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Grade Scale Reference */}
-              <div className="p-4 bg-accent/5 rounded-lg border border-accent/20">
-                <h4 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                  <Award className="w-4 h-4 text-accent" />
-                  Grade Scale Reference
-                </h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {gradeScale.map((grade) => (
-                    <div
-                      key={grade.id}
-                      className="p-2 bg-background rounded border text-center"
-                    >
-                      <p className={`text-lg font-bold ${getGradeColor(grade.grade_point)}`}>
-                        {grade.grade_letter}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {grade.min_percentage}-{grade.max_percentage}%
-                      </p>
-                      <p className="text-xs text-accent font-medium">
-                        GP: {grade.grade_point}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-primary/20">
+                      <th className="text-left p-3 text-muted-foreground">Course Code</th>
+                      <th className="text-left p-3 text-muted-foreground">Course Name</th>
+                      <th className="text-center p-3 text-muted-foreground">Credits</th>
+                      <th className="text-center p-3 text-muted-foreground">Grade</th>
+                      <th className="text-center p-3 text-muted-foreground">Grade Point</th>
+                      <th className="text-center p-3 text-muted-foreground">Percentage</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studentCGPAData.courseGrades.map((grade, index) => (
+                      <tr key={index} className="border-b border-primary/10">
+                        <td className="p-3 font-mono">{grade.courses?.course_code || 'N/A'}</td>
+                        <td className="p-3">{grade.courses?.course_name || 'N/A'}</td>
+                        <td className="p-3 text-center">{grade.credits || 0}</td>
+                        <td className="p-3 text-center">
+                          <Badge className={getGradeColor(grade.grade_point)}>
+                            {grade.grade_letter}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-center font-bold">{grade.grade_point}</td>
+                        <td className="p-3 text-center">{grade.percentage?.toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+            </CardContent>
+          </Card>
 
-              {/* Percentage Input */}
-              <div className="space-y-2">
-                <Label htmlFor="percentage">Enter Percentage (0-100)</Label>
-                <div className="flex gap-3">
-                  <Input
-                    id="percentage"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={gradeData.percentage}
-                    onChange={(e) => calculateGradeFromPercentage(e.target.value)}
-                    placeholder="Enter marks percentage"
-                    className="text-lg"
-                  />
-                  <Button
-                    onClick={() => calculateGradeFromPercentage(gradeData.percentage)}
-                    variant="outline"
-                    className="border-accent/30"
+          {/* Grade Scale Reference */}
+          <Card className="glass-effect border-primary/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-foreground">
+                <Award className="w-5 h-5 text-accent" />
+                Grade Scale Reference
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                {gradeScale.map((grade) => (
+                  <div
+                    key={grade.id}
+                    className="p-3 bg-background rounded border text-center"
                   >
-                    <Calculator className="w-4 h-4 mr-2" />
-                    Calculate
-                  </Button>
-                </div>
-                <div className="pt-2">
-                  <Button
-                    onClick={fetchAutoCalculatedGrade}
-                    variant="outline"
-                    className="w-full border-accent/30"
-                  >
-                    <Calculator className="w-4 h-4 mr-2" />
-                    Auto-Calculate from Assessments
-                  </Button>
-                </div>
-              </div>
-
-              {/* Calculated Grade Display */}
-              {gradeData.grade_letter && (
-                <Card className="glass-effect border-l-4 border-l-accent">
-                  <CardContent className="p-6">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Grade Letter</p>
-                        <p className={`text-4xl font-bold ${getGradeColor(gradeData.grade_point)}`}>
-                          {gradeData.grade_letter}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Grade Point</p>
-                        <p className={`text-4xl font-bold ${getGradeColor(gradeData.grade_point)}`}>
-                          {gradeData.grade_point}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">Percentage</p>
-                        <p className={`text-4xl font-bold ${getGradeColor(gradeData.grade_point)}`}>
-                          {gradeData.percentage.toFixed(1)}%
-                        </p>
-                      </div>
-                    </div>
-
-                    {gradeData.grade_point < 4 && (
-                      <div className="mt-4 p-3 bg-red-500/10 rounded border border-red-500/30">
-                        <p className="text-sm text-red-600 font-medium">
-                          ⚠️ This is a failing grade (below passing threshold)
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Save Button */}
-              <Button
-                onClick={saveCourseGrade}
-                disabled={isSaving || !gradeData.grade_letter}
-                className="w-full bg-gradient-to-r from-primary to-accent hover:from-accent hover:to-primary"
-                size="lg"
-              >
-                {isSaving ? (
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Saving Grade...
+                    <p className={`text-lg font-bold ${getGradeColor(grade.grade_point)}`}>
+                      {grade.grade_letter}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {grade.min_percentage}-{grade.max_percentage}%
+                    </p>
+                    <p className="text-xs text-accent font-medium">
+                      GP: {grade.grade_point}
+                    </p>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Save className="w-4 h-4" />
-                    {existingGrade ? 'Update Course Grade' : 'Save Course Grade'}
-                  </div>
-                )}
-              </Button>
-
-              <div className="p-3 bg-blue-500/10 rounded border border-blue-500/30">
-                <p className="text-sm text-blue-600">
-                  <TrendingUp className="w-4 h-4 inline mr-1" />
-                  The student's CGPA and SGPA will be automatically recalculated after saving this grade.
-                </p>
+                ))}
               </div>
             </CardContent>
           </Card>
         </>
+      )}
+
+      {!studentCGPAData && (
+        <Card className="glass-effect border-primary/20">
+          <CardContent className="p-8 text-center">
+            <p className="text-muted-foreground">
+              {selectedStudent 
+                ? "Select academic year and semester to view CGPA data."
+                : "Select a student, year, and semester to view CGPA data."
+              }
+            </p>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

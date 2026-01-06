@@ -322,6 +322,46 @@ const TeacherGradebook = ({ teacherData }: TeacherGradebookProps) => {
           .insert(gradeData);
       }
 
+      // Also save to course_grades table for CGPA calculation
+      const { data: courseInfo } = await supabase
+        .from("courses")
+        .select("credits, academic_year, semester")
+        .eq("id", selectedCourse)
+        .single();
+
+      if (courseInfo) {
+        // Convert letter grade to grade point (adjust scale as needed)
+        const gradePointMap: { [key: string]: number } = {
+          'A+': 10, 'A': 9, 'B+': 8, 'B': 7, 'C+': 6, 'C': 5, 'D': 4, 'F': 0
+        };
+        const gradePoint = gradePointMap[finalGrade] || 0;
+
+        const courseGradeData = {
+          student_id: selectedStudent,
+          course_id: selectedCourse,
+          academic_year: courseInfo.academic_year || new Date().getFullYear().toString(),
+          semester: courseInfo.semester || 'Fall',
+          total_marks: calculatedScore,
+          max_marks: 100,
+          percentage: calculatedScore,
+          grade_letter: finalGrade,
+          grade_point: gradePoint,
+          credits: courseInfo.credits || 0,
+          is_completed: true,
+          is_passed: gradePoint >= 4,
+          recorded_by: user.user.id,
+          recorded_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        await supabase
+          .from("course_grades")
+          .upsert(courseGradeData, {
+            onConflict: 'student_id,course_id,academic_year,semester',
+            ignoreDuplicates: false
+          });
+      }
+
       await fetchExistingGrade();
       await fetchAllGrades();
 
