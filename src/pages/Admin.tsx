@@ -44,6 +44,7 @@ import DepartmentManagement from '@/components/admin/DepartmentManagement';
 // Import dynamic feature loader
 import { loadUserFeatures, featuresToSidebarItems } from '../lib/FeatureLoader';
 import StudentVerification from '@/components/admin/StudentVerification';
+import PlacementManagement from '@/components/admin/PlacementManagement';
 
 interface TagFeature {
   feature_key: string;
@@ -73,6 +74,7 @@ const TAG_FEATURE_MAP: Record<string, TagFeature[]> = {
     { feature_key: 'enrollment', feature_name: 'Enrollment Management', feature_route: '/admin/enrollment', icon: 'Users', display_order: 2 },
     { feature_key: 'timetable', feature_name: 'Timetable Management', feature_route: '/admin/timetable', icon: 'Calendar', display_order: 2.5 },
     { feature_key: 'events', feature_name: 'Event Management', feature_route: '/admin/events', icon: 'Calendar', display_order: 3 },
+    { feature_key: 'placements', feature_name: 'Placement Management', feature_route: '/admin/placements', icon: 'Briefcase', display_order: 3.5 },
     { feature_key: 'finance', feature_name: 'Finance Management', feature_route: '/admin/finance', icon: 'DollarSign', display_order: 4 },
     { feature_key: 'facilities', feature_name: 'Facility Management', feature_route: '/admin/facilities', icon: 'Building', display_order: 5 },
     { feature_key: 'feature_config', feature_name: 'Feature Configuration', feature_route: '/admin/feature-config', icon: 'Settings', display_order: 5.5 },
@@ -98,7 +100,8 @@ const TAG_FEATURE_MAP: Record<string, TagFeature[]> = {
   ],
   event_admin: [
     { feature_key: 'dashboard', feature_name: 'Dashboard', feature_route: '/admin/dashboard', icon: 'Activity', display_order: 0 },
-    { feature_key: 'events', feature_name: 'Event Management', feature_route: '/admin/events', icon: 'Calendar', display_order: 3 }
+    { feature_key: 'events', feature_name: 'Event Management', feature_route: '/admin/events', icon: 'Calendar', display_order: 3 },
+    { feature_key: 'placements', feature_name: 'Placement Management', feature_route: '/admin/placements', icon: 'Briefcase', display_order: 3.5 }
   ],
   facility_admin: [
     { feature_key: 'dashboard', feature_name: 'Dashboard', feature_route: '/admin/dashboard', icon: 'Activity', display_order: 0 },
@@ -573,6 +576,11 @@ const Admin = () => {
       case 'events':
         return isFeatureAvailable('events')
           ? <EventManagement userProfile={userProfile} />
+          : <FeatureNotAvailable />;
+
+      case 'placements':
+        return isFeatureAvailable('placements')
+          ? <PlacementManagement userProfile={userProfile} />
           : <FeatureNotAvailable />;
       
       case 'finance':

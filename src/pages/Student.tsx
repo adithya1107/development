@@ -29,7 +29,8 @@ import {
   Award,
   TrendingUp,
   Bot,
-  ShoppingBag
+  ShoppingBag,
+  Briefcase
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
@@ -60,6 +61,8 @@ import StudentDepartment from '@/components/student/StudentDepartment';
 
 // Import dynamic feature loader
 import { loadUserFeatures, featuresToSidebarItems } from '../lib/FeatureLoader';
+import PlacementManagement from '@/components/admin/PlacementManagement';
+import StudentPlacement from '@/components/student/StudentPlacement';
 
 // Type definitions
 type Notification = {
@@ -290,6 +293,7 @@ const Student = () => {
       { id: 'gradebook', label: 'Gradebook', icon: FileText, enabled: true, order: 5 },
       { id: 'cgpa', label: 'CGPA', icon: TrendingUp, enabled: true, order: 6 },
       { id: 'events', label: 'Events', icon: Bell, enabled: true, order: 7 },
+      { id: 'placements', label: 'Placements', icon: Briefcase, enabled: true, order: 8 },
       { id: 'clubs', label: 'Clubs', icon: Users, enabled: true, order: 8 },
       { id: 'marketplace', label: 'Marketplace', icon: ShoppingBag, enabled: true, order: 8 },
       { id: 'furlong', label: 'Furlong', icon: Sun, enabled: true, order: 9 },
@@ -552,7 +556,12 @@ const Student = () => {
         return isFeatureAvailable('events')
           ? <Events studentData={studentData} />
           : <FeatureNotAvailable />;
-      
+
+      case 'placements':
+        return isFeatureAvailable('placements')
+          ? <StudentPlacement studentData={studentData} />
+          : <FeatureNotAvailable />;
+
       case 'marketplace':
         return isFeatureAvailable('marketplace')
           ? <MarketplaceApp onNavigateToChat={handleNavigateToChat} />
