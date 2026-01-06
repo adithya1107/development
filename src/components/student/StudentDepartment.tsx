@@ -29,12 +29,25 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
   const [activeTab, setActiveTab] = useState('events');
   const [searchQuery, setSearchQuery] = useState('');
   const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'today' | 'this-week'>('upcoming');
+  const [isClassRep, setIsClassRep] = useState(false);
   
   const eventsSubscriptionRef = useRef<any>(null);
   const announcementsSubscriptionRef = useRef<any>(null);
 
   useEffect(() => {
-    loadStudentDepartment();
+    const userId = studentData?.id || studentData?.user_id;
+    
+    if (userId) {
+      loadStudentDepartment();
+    } else {
+      console.error('❌ studentData or studentData.id/user_id is missing:', studentData);
+      toast({
+        title: 'Error',
+        description: 'Student information is not available',
+        variant: 'destructive'
+      });
+      setLoading(false);
+    }
     
     return () => {
       cleanupSubscriptions();
@@ -43,6 +56,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
   useEffect(() => {
     if (department?.id) {
+      checkClassRepStatus();
       subscribeToRealtimeUpdates();
     }
     
@@ -181,47 +195,75 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     try {
       setLoading(true);
 
+      const userId = studentData?.id || studentData?.user_id;
+      
       console.log('📋 Loading student department...');
+      console.log('Student ID:', userId);
 
-      // Get student's department from student table
-      const { data: studentInfo, error: studentError } = await supabase
-        .from('student')
+      if (!userId) {
+        console.error('No user ID found in studentData');
+        setLoading(false);
+        return;
+      }
+
+      // Check if student has class_representative tag with department context
+      const { data: classRepAssignment, error: repError } = await supabase
+        .from('user_tag_assignments')
         .select(`
-          department_id,
-          departments (
-            id,
-            name,
-            code,
-            description,
-            hod_id
+          context_id,
+          user_tags!inner (
+            tag_name
           )
         `)
-        .eq('id', studentData.user_id)
-        .single();
+        .eq('user_id', userId)
+        .eq('context_type', 'department')
+        .eq('user_tags.tag_name', 'class_representative')
+        .eq('is_active', true)
+        .maybeSingle();
 
-      if (studentError) throw studentError;
+      if (repError && repError.code !== 'PGRST116') {
+        console.error('Error checking class rep status:', repError);
+      }
 
-      if (!studentInfo?.department_id) {
-        console.log('⚠️ No department assigned');
+      console.log('Class rep assignment:', classRepAssignment);
+
+      let departmentId: string | null = null;
+
+      if (classRepAssignment?.context_id) {
+        // User is a class representative
+        departmentId = classRepAssignment.context_id;
+        console.log('✅ Found class representative assignment for department:', departmentId);
+      } else {
+        // Student is not a class representative - no department access
+        console.log('⚠️ Student is not a class representative');
         toast({
-          title: 'No Department',
-          description: 'You are not assigned to any department.',
+          title: 'No Department Access',
+          description: 'You need to be a class representative to access the department section.',
           variant: 'destructive'
         });
         setLoading(false);
         return;
       }
 
-      console.log('✅ Department found:', studentInfo.departments);
-      setDepartment(studentInfo.departments);
+      // Fetch department details
+      const { data: deptData, error: deptError } = await supabase
+        .from('departments')
+        .select('*')
+        .eq('id', departmentId)
+        .single();
+
+      if (deptError) throw deptError;
+
+      console.log('✅ Department found:', deptData);
+      setDepartment(deptData);
 
       // Load department events
       const { data: eventsData, error: eventsError } = await supabase
         .from('department_events')
         .select('*')
-        .eq('department_id', studentInfo.department_id)
-        .gte('end_date', new Date().toISOString())
-        .order('start_date', { ascending: true });
+        .eq('department_id', departmentId)
+        .gte('end_datetime', new Date().toISOString())
+        .order('start_datetime', { ascending: true });
 
       if (eventsError) {
         console.error('❌ Error loading events:', eventsError);
@@ -234,7 +276,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
       const { data: announcementsData } = await supabase
         .from('announcements')
         .select('*')
-        .eq('department_id', studentInfo.department_id)
+        .eq('department_id', departmentId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(20);
@@ -251,6 +293,53 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkClassRepStatus = async () => {
+    const userId = studentData?.id || studentData?.user_id;
+    
+    if (!department?.id || !userId) {
+      console.log('Missing department or student ID');
+      setIsClassRep(false);
+      return;
+    }
+
+    try {
+      console.log('Checking class rep status for student:', userId, 'department:', department.id);
+      
+      // Check if user has class_representative tag with context of this department
+      const { data, error } = await supabase
+        .from('user_tag_assignments')
+        .select(`
+          id,
+          user_tags!inner (
+            tag_name
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('context_type', 'department')
+        .eq('context_id', department.id)
+        .eq('user_tags.tag_name', 'class_representative')
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error checking class rep status:', error);
+        setIsClassRep(false);
+        return;
+      }
+
+      if (data) {
+        setIsClassRep(true);
+        console.log('✅ User is class representative');
+      } else {
+        setIsClassRep(false);
+        console.log('User is regular student');
+      }
+    } catch (error) {
+      console.log('Error checking class representative status:', error);
+      setIsClassRep(false);
     }
   };
 
@@ -390,10 +479,10 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
             </div>
             <div>
               <h1 className="text-xl sm:text-2xl font-bold text-foreground">
-                {department.name}
+                {department.department_name}
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground">
-                {department.code} • Class Representative View
+                {department.department_code} • {isClassRep ? 'Class Representative' : 'Student'} View
               </p>
             </div>
           </div>
@@ -412,10 +501,12 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
             </div>
 
             {/* Role Badge */}
-            <Badge variant="secondary" className="hidden sm:flex">
-              <Users className="w-3 h-3 mr-1" />
-              Class Rep
-            </Badge>
+            {isClassRep && (
+              <Badge variant="secondary" className="hidden sm:flex">
+                <Users className="w-3 h-3 mr-1" />
+                Class Rep
+              </Badge>
+            )}
           </div>
         </div>
       </div>
@@ -526,7 +617,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-2">
                         <CardTitle className="text-lg line-clamp-2">
-                          {event.event_name}
+                          {event.event_title}
                         </CardTitle>
                         <Badge variant={getEventTypeBadge(event.event_type).variant}>
                           {event.event_type}
@@ -534,9 +625,9 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                      {event.description && (
+                      {event.event_description && (
                         <p className="text-sm text-muted-foreground line-clamp-2">
-                          {event.description}
+                          {event.event_description}
                         </p>
                       )}
                       
@@ -544,16 +635,19 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4 flex-shrink-0" />
                           <span className="truncate">
-                            {formatEventDate(event.start_date, event.end_date)}
+                            {formatEventDate(event.start_datetime, event.end_datetime)}
                           </span>
                         </div>
                         
-                        {event.start_time && (
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 flex-shrink-0" />
-                            <span>{event.start_time}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 flex-shrink-0" />
+                          <span>
+                            {new Date(event.start_datetime).toLocaleTimeString([], { 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </span>
+                        </div>
                         
                         {event.location && (
                           <div className="flex items-center gap-2">
@@ -657,9 +751,11 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         <div className="flex items-center gap-3 text-sm">
           <AlertCircle className="w-5 h-5 text-muted-foreground flex-shrink-0" />
           <p className="text-muted-foreground">
-            <strong className="text-foreground">Class Representative Access:</strong>{' '}
-            You can view all department events and announcements. For updates or concerns, 
-            contact your department HOD.
+            <strong className="text-foreground">
+              {isClassRep ? 'Class Representative Access:' : 'Student Access:'}
+            </strong>{' '}
+            You can view all department events and announcements. 
+            {isClassRep && ' For updates or concerns, contact your department HOD.'}
           </p>
         </div>
       </div>

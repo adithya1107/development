@@ -64,49 +64,42 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
       setLoading(true);
       console.log('Fetching clubs for advisor:', teacherData.user_id);
       
-      // First, get all clubs where this teacher is assigned as advisor (president tag)
-      const { data: tagAssignments, error: tagError } = await supabase
+      // Get all clubs where this teacher has club_advisor tag
+      const { data: advisorAssignments, error: assignError } = await supabase
         .from('user_tag_assignments')
         .select(`
-          tag_id,
+          context_id,
           user_tags!inner (
-            id,
-            tag_name,
-            tag_category
+            tag_name
           )
         `)
         .eq('user_id', teacherData.user_id)
-        .eq('is_active', true)
-        .eq('user_tags.tag_category', 'club');
+        .eq('context_type', 'club')
+        .eq('user_tags.tag_name', 'club_advisor')
+        .eq('is_active', true);
 
-      if (tagError) {
-        console.error('Error fetching tag assignments:', tagError);
-        throw tagError;
-      }
+      if (assignError) throw assignError;
 
-      console.log('Tag assignments:', tagAssignments);
+      console.log('Advisor assignments:', advisorAssignments);
 
-      // Get club IDs from president tags
-      const presidentTagIds = tagAssignments?.map(ta => ta.tag_id) || [];
-
-      if (presidentTagIds.length === 0) {
+      if (!advisorAssignments || advisorAssignments.length === 0) {
         setClubs([]);
         setLoading(false);
         return;
       }
 
-      // Fetch clubs where the teacher is the president (advisor)
+      // Get club IDs
+      const clubIds = advisorAssignments.map(a => a.context_id);
+
+      // Fetch full club details
       const { data: clubsData, error: clubsError } = await supabase
         .from('clubs')
         .select('*')
-        .in('president_tag_id', presidentTagIds)
+        .in('id', clubIds)
         .eq('is_active', true)
         .order('club_name', { ascending: true });
 
-      if (clubsError) {
-        console.error('Error fetching clubs:', clubsError);
-        throw clubsError;
-      }
+      if (clubsError) throw clubsError;
 
       console.log('Fetched clubs:', clubsData);
       setClubs(clubsData || []);
@@ -132,14 +125,26 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
     try {
       console.log('Fetching members for club:', selectedClub.id);
       
-      // Fetch all users with the club's member tag
+      // Get the generic club_member tag ID
+      const { data: memberTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'club_member')
+        .single();
+
+      if (!memberTag) {
+        console.error('club_member tag not found!');
+        return;
+      }
+
+      // Fetch all users with club_member tag for this club
       const { data, error } = await supabase
         .from('user_tag_assignments')
         .select(`
           id,
           user_id,
           assigned_at,
-          user_profiles!inner (
+          user_profiles!user_tag_assignments_user_id_fkey (
             id,
             first_name,
             last_name,
@@ -148,14 +153,13 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
             user_type
           )
         `)
-        .eq('tag_id', selectedClub.member_tag_id)
+        .eq('tag_id', memberTag.id)
+        .eq('context_type', 'club')
+        .eq('context_id', selectedClub.id)
         .eq('is_active', true)
         .order('assigned_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching club members:', error);
-        throw error;
-      }
+      if (error) throw error;
 
       console.log('Fetched club members:', data);
       setClubMembers(data || []);
@@ -212,41 +216,35 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
         return;
       }
 
-      // Create president tag
-      const presidentTagName = `${newClub.club_name.toLowerCase().replace(/\s+/g, '_')}_president`;
-      const { data: presidentTag, error: presidentTagError } = await supabase
+      // 1. Get or verify generic tags exist
+      const { data: advisorTag } = await supabase
         .from('user_tags')
-        .insert({
-          tag_name: presidentTagName,
-          tag_category: 'club',
-          display_name: `${newClub.club_name} - President`,
-          description: `President/Advisor of ${newClub.club_name}`,
-          base_user_type: 'faculty',
-          created_by: teacherData.user_id
-        })
-        .select()
+        .select('id')
+        .eq('tag_name', 'club_advisor')
         .single();
 
-      if (presidentTagError) throw presidentTagError;
-
-      // Create member tag
-      const memberTagName = `${newClub.club_name.toLowerCase().replace(/\s+/g, '_')}_member`;
-      const { data: memberTag, error: memberTagError } = await supabase
+      const { data: memberTag } = await supabase
         .from('user_tags')
-        .insert({
-          tag_name: memberTagName,
-          tag_category: 'club',
-          display_name: `${newClub.club_name} - Member`,
-          description: `Member of ${newClub.club_name}`,
-          base_user_type: 'student',
-          created_by: teacherData.user_id
-        })
-        .select()
+        .select('id')
+        .eq('tag_name', 'club_member')
         .single();
 
-      if (memberTagError) throw memberTagError;
+      const { data: presidentTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'club_president')
+        .single();
 
-      // Create club
+      if (!advisorTag || !memberTag || !presidentTag) {
+        toast({
+          title: 'Error',
+          description: 'Generic club tags not found. Please run setup SQL first.',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // 2. Create club (without tag references)
       const { data: clubData, error: clubError } = await supabase
         .from('clubs')
         .insert({
@@ -255,8 +253,6 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
           description: newClub.description,
           club_category: newClub.club_category,
           club_logo: newClub.club_logo || null,
-          president_tag_id: presidentTag.id,
-          member_tag_id: memberTag.id,
           created_by: teacherData.user_id
         })
         .select()
@@ -264,16 +260,42 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
 
       if (clubError) throw clubError;
 
-      // Assign president tag to teacher
-      const { error: assignError } = await supabase
+      // 3. Assign advisor tag to teacher with context
+      // First check if this exact assignment already exists
+      const { data: existingAssignment } = await supabase
         .from('user_tag_assignments')
-        .insert({
-          user_id: teacherData.user_id,
-          tag_id: presidentTag.id,
-          assigned_by: teacherData.user_id
-        });
+        .select('id, is_active')
+        .eq('user_id', teacherData.user_id)
+        .eq('tag_id', advisorTag.id)
+        .eq('context_type', 'club')
+        .eq('context_id', clubData.id)
+        .maybeSingle();
 
-      if (assignError) throw assignError;
+      if (existingAssignment) {
+        // If exists but inactive, reactivate it
+        if (!existingAssignment.is_active) {
+          const { error: updateError } = await supabase
+            .from('user_tag_assignments')
+            .update({ is_active: true })
+            .eq('id', existingAssignment.id);
+          
+          if (updateError) throw updateError;
+        }
+        // If already active, no need to do anything
+      } else {
+        // Create new assignment
+        const { error: assignError } = await supabase
+          .from('user_tag_assignments')
+          .insert({
+            user_id: teacherData.user_id,
+            tag_id: advisorTag.id,
+            context_type: 'club',
+            context_id: clubData.id,
+            assigned_by: teacherData.user_id
+          });
+
+        if (assignError) throw assignError;
+      }
 
       toast({
         title: 'Success',
@@ -303,11 +325,30 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
     if (!selectedClub) return;
 
     try {
+      // Get the generic club_member tag
+      const { data: memberTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'club_member')
+        .single();
+
+      if (!memberTag) {
+        toast({
+          title: 'Error',
+          description: 'club_member tag not found',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Assign member tag with club context
       const { error } = await supabase
         .from('user_tag_assignments')
         .insert({
           user_id: studentId,
-          tag_id: selectedClub.member_tag_id,
+          tag_id: memberTag.id,
+          context_type: 'club',
+          context_id: selectedClub.id,
           assigned_by: teacherData.user_id
         });
 
@@ -327,6 +368,62 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
         description: 'Failed to add member',
         variant: 'destructive'
       });
+    }
+  };
+
+  const assignPresidentRole = async (studentId: string, clubId: string) => {
+    try {
+      // Get the generic club_president tag
+      const { data: presidentTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'club_president')
+        .single();
+
+      if (!presidentTag) {
+        toast({
+          title: 'Error',
+          description: 'club_president tag not found',
+          variant: 'destructive'
+        });
+        return false;
+      }
+
+      // Remove old president assignment for this club if exists
+      await supabase
+        .from('user_tag_assignments')
+        .update({ is_active: false })
+        .eq('tag_id', presidentTag.id)
+        .eq('context_type', 'club')
+        .eq('context_id', clubId);
+
+      // Assign new president with context
+      const { error } = await supabase
+        .from('user_tag_assignments')
+        .insert({
+          user_id: studentId,
+          tag_id: presidentTag.id,
+          context_type: 'club',
+          context_id: clubId,
+          assigned_by: teacherData.user_id
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success',
+        description: 'President role assigned'
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error assigning president:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to assign president role',
+        variant: 'destructive'
+      });
+      return false;
     }
   };
 
@@ -414,6 +511,13 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
     }
 
     try {
+      // Remove all role assignments for this club
+      await supabase
+        .from('user_tag_assignments')
+        .update({ is_active: false })
+        .eq('context_type', 'club')
+        .eq('context_id', clubId);
+
       const { error } = await supabase
         .from('clubs')
         .update({ is_active: false })

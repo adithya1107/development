@@ -84,43 +84,60 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
     try {
       setLoading(true);
       
-      const { data: userTags, error: tagsError } = await supabase
+      console.log('📋 Loading user clubs...');
+
+      // Get all club assignments for this user (both member and president)
+      const { data: clubAssignments, error: assignError } = await supabase
         .from('user_tag_assignments')
         .select(`
-          tag_id,
-          user_tags (
-            id,
-            tag_name,
-            tag_category,
-            display_name
+          context_id,
+          user_tags!inner (
+            tag_name
           )
         `)
         .eq('user_id', studentData.user_id)
+        .eq('context_type', 'club')
+        .in('user_tags.tag_name', ['club_member', 'club_president'])
         .eq('is_active', true);
 
-      if (tagsError) throw tagsError;
+      if (assignError) throw assignError;
 
-      const clubTags = userTags
-        ?.filter((ut: any) => ut.user_tags?.tag_category === 'student_role')
-        .map((ut: any) => ut.tag_id) || [];
+      console.log('✅ Club assignments found:', clubAssignments);
 
-      if (clubTags.length === 0) {
+      if (!clubAssignments || clubAssignments.length === 0) {
+        setClubs([]);
         setLoading(false);
         return;
       }
 
+      // Get unique club IDs - student can be in multiple clubs
+      const clubIds = [...new Set(clubAssignments.map(a => a.context_id).filter(Boolean))];
+
+      console.log('📋 Found', clubIds.length, 'unique club(s)');
+
+      // Fetch full club details
       const { data: userClubs, error: clubsError } = await supabase
         .from('clubs')
         .select('*')
+        .in('id', clubIds)
         .eq('college_id', studentData.college_id)
         .eq('is_active', true)
-        .or(`member_tag_id.in.(${clubTags.join(',')}),president_tag_id.in.(${clubTags.join(',')})`);
+        .order('club_name', { ascending: true });
 
       if (clubsError) throw clubsError;
 
+      console.log('✅ Clubs loaded:', userClubs?.length || 0);
+
       setClubs(userClubs || []);
       if (userClubs && userClubs.length > 0) {
-        setSelectedClub(userClubs[0]);
+        // Select the first club by default, or keep current selection if still valid
+        if (selectedClub && userClubs.find(c => c.id === selectedClub.id)) {
+          // Keep current selection if still valid
+          setSelectedClub(selectedClub);
+        } else {
+          // Select first club
+          setSelectedClub(userClubs[0]);
+        }
       }
     } catch (error) {
       console.error('Error fetching clubs:', error);
@@ -136,24 +153,31 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
 
   const checkPresidentStatus = async (clubId: string) => {
     try {
-      const { data: club } = await supabase
-        .from('clubs')
-        .select('president_tag_id')
-        .eq('id', clubId)
+      // Check if user has club_president tag with context of this club
+      const { data, error } = await supabase
+        .from('user_tag_assignments')
+        .select(`
+          id,
+          user_tags!inner (
+            tag_name
+          )
+        `)
+        .eq('user_id', studentData.user_id)
+        .eq('context_type', 'club')
+        .eq('context_id', clubId)
+        .eq('user_tags.tag_name', 'club_president')
+        .eq('is_active', true)
         .single();
 
-      if (club) {
-        const { data: hasTag } = await supabase
-          .from('user_tag_assignments')
-          .select('id')
-          .eq('user_id', studentData.user_id)
-          .eq('tag_id', club.president_tag_id)
-          .eq('is_active', true)
-          .single();
-
-        setIsPresident(!!hasTag);
+      if (error) {
+        setIsPresident(false);
+        return;
       }
+
+      setIsPresident(!!data);
+      console.log('✅ President status:', !!data);
     } catch (error) {
+      console.log('Not a president of this club');
       setIsPresident(false);
     }
   };
@@ -515,9 +539,16 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Club Activity Center</h1>
-          <p className="text-muted-foreground mt-1">
-            {isPresident ? 'Manage your club activities' : 'Stay updated with club announcements and events'}
-          </p>
+          {selectedClub && clubs.length > 1 && (
+            <p className="text-sm text-muted-foreground mt-1">
+              Currently viewing: <span className="text-role-student font-semibold">{selectedClub.club_name}</span>
+            </p>
+          )}
+          {selectedClub && clubs.length === 1 && (
+            <p className="text-muted-foreground mt-1">
+              {isPresident ? 'Manage your club activities' : 'Stay updated with club announcements and events'}
+            </p>
+          )}
         </div>
         {isPresident && (
           <div className="flex gap-2">
@@ -540,18 +571,30 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
 
       {/* Club Selector */}
       {clubs.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {clubs.map(club => (
-            <Button
-              key={club.id}
-              variant={selectedClub?.id === club.id ? 'default' : 'outline'}
-              onClick={() => setSelectedClub(club)}
-              className={selectedClub?.id === club.id ? 'bg-role-student' : 'border-white/20'}
-            >
-              {club.club_name}
-            </Button>
-          ))}
-        </div>
+        <Card className="bg-card/50 backdrop-blur border-white/10">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-foreground">
+                Your Clubs ({clubs.length})
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Select a club to view its content
+              </p>
+            </div>
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {clubs.map(club => (
+                <Button
+                  key={club.id}
+                  variant={selectedClub?.id === club.id ? 'default' : 'outline'}
+                  onClick={() => setSelectedClub(club)}
+                  className={selectedClub?.id === club.id ? 'bg-role-student' : 'border-white/20'}
+                >
+                  {club.club_name}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Stats Cards */}

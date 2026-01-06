@@ -30,7 +30,8 @@ import {
   TrendingUp,
   Bot,
   ShoppingBag,
-  Briefcase
+  Briefcase,
+  Building2Icon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import SidebarNavigation from '@/components/layout/SidebarNavigation';
@@ -293,6 +294,7 @@ const Student = () => {
       { id: 'gradebook', label: 'Gradebook', icon: FileText, enabled: true, order: 5 },
       { id: 'cgpa', label: 'CGPA', icon: TrendingUp, enabled: true, order: 6 },
       { id: 'events', label: 'Events', icon: Bell, enabled: true, order: 7 },
+      { id: 'department', label: 'Department', icon: Building2Icon, enabled: true, order: 7.5 },
       { id: 'placements', label: 'Placements', icon: Briefcase, enabled: true, order: 8 },
       { id: 'clubs', label: 'Clubs', icon: Users, enabled: true, order: 8 },
       { id: 'marketplace', label: 'Marketplace', icon: ShoppingBag, enabled: true, order: 8 },
@@ -550,6 +552,11 @@ const Student = () => {
       case 'cgpa':
         return isFeatureAvailable('cgpa')
           ? <StudentCGPADashboard studentData={studentData} />
+          : <FeatureNotAvailable />;
+
+      case 'department':
+        return isFeatureAvailable('department')
+          ? <StudentDepartment studentData={studentData} userTags={userTags} />
           : <FeatureNotAvailable />;
       
       case 'events':

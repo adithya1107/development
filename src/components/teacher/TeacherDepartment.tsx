@@ -20,7 +20,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import EventCreationForm from "./EventCreationForm";
-import { useDepartmentPermissions } from "@/hooks/useDepartmentPermissions";
 import {
   getUserDepartments,
   getDepartmentChannels,
@@ -36,6 +35,8 @@ import {
   type Department,
   type DepartmentChannel,
 } from "@/services/departmentService";
+import { supabase } from '@/integrations/supabase/client';
+
 
 interface TeacherDepartmentProps {
   teacherData: any;
@@ -58,6 +59,7 @@ const TeacherDepartment = ({
   const [selectedChannel, setSelectedChannel] = useState<DepartmentChannel | null>(null);
   const [messages, setMessages] = useState<DepartmentMessage[]>([]);
   const [events, setEvents] = useState<DepartmentEvent[]>([]);
+  const [userRole, setUserRole] = useState<'hod' | 'admin' | 'member' | null>(null);
 
   const [newMessage, setNewMessage] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
@@ -72,7 +74,6 @@ const TeacherDepartment = ({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const userId = teacherData?.id || teacherData?.user_id;
-  const permissions = useDepartmentPermissions(department?.id, userId);
 
   useEffect(() => {
     const userId = teacherData?.id || teacherData?.user_id;
@@ -84,6 +85,7 @@ const TeacherDepartment = ({
   useEffect(() => {
     if (department) {
       loadDepartmentData(department.id);
+      checkUserRole(department.id);
     }
   }, [department?.id]);
 
@@ -151,6 +153,58 @@ const TeacherDepartment = ({
         variant: "destructive",
       });
       setLoading(false);
+    }
+  };
+
+  const checkUserRole = async (departmentId: string) => {
+    if (!userId) return;
+
+    try {
+      // First check if user is HOD (stored directly in departments table)
+      const { data: deptData } = await supabase
+        .from('departments')
+        .select('hod_id')
+        .eq('id', departmentId)
+        .single();
+
+      if (deptData?.hod_id === userId) {
+        setUserRole('hod');
+        console.log('✅ User is HOD of this department');
+        return;
+      }
+
+      // Then check for admin/member tags with context
+      const { data: roleData, error } = await supabase
+        .from('user_tag_assignments')
+        .select(`
+          user_tags!inner (
+            tag_name
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('context_type', 'department')
+        .eq('context_id', departmentId)
+        .eq('is_active', true)
+        .single();
+
+      if (error) {
+        console.log('No role tag found, setting as member');
+        setUserRole('member');
+        return;
+      }
+
+      if (roleData.user_tags.tag_name === 'department_admin') {
+        setUserRole('admin');
+        console.log('✅ User is Admin of this department');
+      } else if (roleData.user_tags.tag_name === 'department_member') {
+        setUserRole('member');
+        console.log('✅ User is Member of this department');
+      } else {
+        setUserRole('member');
+      }
+    } catch (error) {
+      console.log('Error checking user role:', error);
+      setUserRole('member');
     }
   };
 
@@ -362,19 +416,10 @@ const TeacherDepartment = ({
   };
 
   const handleTogglePin = async (messageId: string, isPinned: boolean) => {
-    if (isPinned && !permissions.canUnpinMessages) {
+    if (!userRole || userRole === 'member') {
       toast({
         title: "Permission Denied",
-        description: "Only HOD or Admin can unpin messages",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!isPinned && !permissions.canPinMessages) {
-      toast({
-        title: "Permission Denied",
-        description: "Only HOD or Admin can pin messages",
+        description: "Only HOD or Admin can pin/unpin messages",
         variant: "destructive",
       });
       return;
@@ -398,7 +443,7 @@ const TeacherDepartment = ({
   };
 
   const handleCreateEvent = async (eventData: any) => {
-    if (!permissions.canCreateEvents) {
+    if (!userRole || userRole === 'member') {
       toast({
         title: "Permission Denied",
         description: "Only HOD or Admin can create events",
@@ -478,6 +523,10 @@ const TeacherDepartment = ({
     return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
   };
 
+  // Permission variables
+  const canCreateEvents = userRole === 'hod' || userRole === 'admin';
+  const canPinMessages = userRole === 'hod' || userRole === 'admin';
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
@@ -528,15 +577,15 @@ const TeacherDepartment = ({
             </div>
 
             {/* Role Badge */}
-            {permissions.role && (
+            {userRole && (
               <Badge variant="outline" className={
-                permissions.isHOD 
+                userRole === 'hod'
                   ? 'bg-purple-100 text-purple-700 border-purple-300' 
-                  : permissions.isAdmin 
+                  : userRole === 'admin'
                   ? 'bg-blue-100 text-blue-700 border-blue-300'
                   : 'bg-gray-100 text-gray-700 border-gray-300'
               }>
-                {permissions.isHOD ? '👑 HOD' : permissions.isAdmin ? '⚡ Admin' : '👤 Member'}
+                {userRole === 'hod' ? '👑 HOD' : userRole === 'admin' ? '⚡ Admin' : '👤 Member'}
               </Badge>
             )}
 
@@ -619,7 +668,7 @@ const TeacherDepartment = ({
                           </span>
                         )}
                       </span>
-                      {permissions.canUnpinMessages && (
+                      {canPinMessages && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -735,7 +784,7 @@ const TeacherDepartment = ({
                             )}
                             
                             {/* Pin button */}
-                            {(permissions.canPinMessages || permissions.canUnpinMessages) && (
+                            {canPinMessages && (
                               <button
                                 onClick={() => handleTogglePin(msg.id, msg.is_pinned)}
                                 className="opacity-0 group-hover:opacity-100 transition ml-2 text-muted-foreground hover:text-blue-500"
@@ -828,7 +877,7 @@ const TeacherDepartment = ({
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <CalendarDays className="h-5 w-5" /> Calendar
                 </CardTitle>
-                {permissions.canCreateEvents && (
+                {canCreateEvents && (
                   <Button 
                     variant="ghost" 
                     size="sm"

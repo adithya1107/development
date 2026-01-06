@@ -536,10 +536,6 @@ const TeacherEvents = ({ teacherData }: TeacherEventsProps) => {
     <PermissionWrapper permission="mark_attendance">
       <div className="space-y-6">
         <Tabs defaultValue="calendar" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="calendar" className="text-xs sm:text-sm">Academic Calendar</TabsTrigger>
-            <TabsTrigger value="workshops" className="text-xs sm:text-sm">Training & Workshops</TabsTrigger>
-          </TabsList>
 
           {/* Academic Calendar with Calendar Component */}
           <TabsContent value="calendar" className="space-y-4">

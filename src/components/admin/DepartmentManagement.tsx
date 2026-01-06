@@ -204,6 +204,48 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
     }
   };
 
+  const assignHODRole = async (departmentId: string, facultyId: string) => {
+    try {
+      // Get the generic 'hod' tag
+      const { data: hodTag, error: tagError } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'hod')
+        .single();
+
+      if (tagError || !hodTag) {
+        console.error('HOD tag not found. Please run the setup SQL first.');
+        return;
+      }
+
+      // Remove old HOD assignment for this department if exists
+      const { error: removeError } = await supabase
+        .from('user_tag_assignments')
+        .update({ is_active: false })
+        .eq('tag_id', hodTag.id)
+        .eq('context_type', 'department')
+        .eq('context_id', departmentId);
+
+      // Assign new HOD with context
+      const { error: assignError } = await supabase
+        .from('user_tag_assignments')
+        .insert({
+          user_id: facultyId,
+          tag_id: hodTag.id,
+          context_type: 'department',
+          context_id: departmentId,
+          assigned_by: userProfile.id
+        });
+
+      if (assignError) throw assignError;
+
+      console.log('✅ HOD role assigned with context');
+    } catch (error) {
+      console.error('Error assigning HOD role:', error);
+      // Don't fail the whole operation if tag assignment fails
+    }
+  };
+
   const handleAddDepartment = async () => {
     if (!deptForm.department_code || !deptForm.department_name) {
       toast({
@@ -237,6 +279,12 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
         });
       } else {
         setDepartments([{ ...data, course_count: 0 }, ...departments]);
+        
+        // If HOD was assigned, also create the tag assignment
+        if (data && deptForm.hod_id) {
+          await assignHODRole(data.id, deptForm.hod_id);
+        }
+        
         setIsAddDialogOpen(false);
         setDeptForm({
           department_code: '',
@@ -309,6 +357,12 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
         setDepartments(departments.map(d => 
           d.id === selectedDepartment.id ? { ...data, course_count: d.course_count } : d
         ));
+        
+        // Update HOD tag assignment if HOD changed
+        if (data && editForm.hod_id && editForm.hod_id !== selectedDepartment.hod_id) {
+          await assignHODRole(data.id, editForm.hod_id);
+        }
+        
         setIsEditDialogOpen(false);
         setSelectedDepartment(null);
 
@@ -346,6 +400,18 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
         .eq('department_id', deptToDelete.id);
 
       if (courseError) throw courseError;
+
+      // Remove all role assignments for this department
+      const { error: roleError } = await supabase
+        .from('user_tag_assignments')
+        .update({ is_active: false })
+        .eq('context_type', 'department')
+        .eq('context_id', deptToDelete.id);
+
+      if (roleError) {
+        console.error('Error removing role assignments:', roleError);
+        // Don't fail the operation
+      }
 
       // Then delete the department
       const { error } = await supabase
