@@ -2090,16 +2090,16 @@ const calculateOverlapPositions = (classes: any[]) => {
                 </Alert>
                 {/* Failed Attempts Section */}
                 {failedAttempts.length > 0 && (
-                  <div className="border-2 border-yellow-200 rounded-lg p-4 bg-yellow-50">
-                    <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm sm:text-base text-yellow-900">
-                      <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                  <div className="border-2 rounded-lg p-4">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm sm:text-base">
+                      <AlertTriangle className="h-5 w-5" />
                       Failed Location Attempts ({failedAttempts.length})
                     </h3>
                     <div className="space-y-3">
                       {failedAttempts.map((attempt) => (
                         <div
                           key={attempt.id}
-                          className="flex flex-col sm:flex-row items-start justify-between p-3 rounded-lg border-2 border-yellow-300 bg-white gap-3"
+                          className="flex flex-col sm:flex-row items-start justify-between p-3 rounded-lg border-2 gap-3"
                         >
                           <div className="flex-1">
                             <p className="font-medium text-sm sm:text-base">
@@ -2108,8 +2108,8 @@ const calculateOverlapPositions = (classes: any[]) => {
                             <p className="text-xs sm:text-sm text-muted-foreground">
                               ID: {attempt.user_profiles?.user_code}
                             </p>
-                            <p className="text-xs text-red-600 mt-1">
-                              ❌ {attempt.failure_reason}
+                            <p className="text-xs mt-1">
+                              {attempt.failure_reason}
                             </p>
                             {attempt.gps_accuracy && (
                               <p className="text-xs text-muted-foreground mt-1">
@@ -2125,7 +2125,7 @@ const calculateOverlapPositions = (classes: any[]) => {
                               size="sm"
                               variant="outline"
                               onClick={() => approveFailedAttempt(attempt)}
-                              className="flex-1 sm:flex-none bg-green-50 hover:bg-green-100 border-green-300 text-green-700"
+                              className="flex-1 sm:flex-none"
                             >
                               <CheckCircle className="h-3 w-3 mr-1" />
                               Approve
@@ -2134,7 +2134,7 @@ const calculateOverlapPositions = (classes: any[]) => {
                               size="sm"
                               variant="outline"
                               onClick={() => rejectFailedAttempt(attempt.id)}
-                              className="flex-1 sm:flex-none bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
+                              className="flex-1 sm:flex-none border-red-300 text-red-700"
                             >
                               <XCircle className="h-3 w-3 mr-1" />
                               Reject
