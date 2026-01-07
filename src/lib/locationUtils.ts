@@ -73,7 +73,7 @@ export function getCurrentLocation(): Promise<Location> {
 export function isWithinRadius(
   teacherLocation: Location,
   studentLocation: Location,
-  radiusMeters: number = 20 // 20m to account for GPS inaccuracy
+  radiusMeters: number = 200 // 200m to account for GPS inaccuracy
 ): boolean {
   const distance = calculateDistance(teacherLocation, studentLocation);
   return distance <= radiusMeters;
