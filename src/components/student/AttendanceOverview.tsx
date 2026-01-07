@@ -225,7 +225,7 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
           distanceFromTeacher = calculateDistance(teacherLocation, studentLocation);
           
           // Check if within 20 meters (accounting for GPS inaccuracy)
-          const ALLOWED_RADIUS = 20; // meters
+          const ALLOWED_RADIUS = 200; // meters
           
           if (distanceFromTeacher > ALLOWED_RADIUS) {
             toast.error(
@@ -235,9 +235,9 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
             return;
           }
           
-          toast.success(`✅ Location verified! Distance: ${Math.round(distanceFromTeacher)}m`, { duration: 3000 });
+          toast.success(`Location verified! Distance: ${Math.round(distanceFromTeacher)}m`, { duration: 3000 });
         } else {
-          toast.info('ℹ️ Location verification not available for this session');
+          toast.info('Location verification not available for this session');
         }
       } catch (locationError: any) {
         // If teacher set location, require it from student
@@ -250,7 +250,7 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
         }
         // Otherwise, continue without location verification
         console.warn('Location not available:', locationError);
-        toast.warning('⚠️ Proceeding without location verification');
+        toast.warning('Proceeding without location verification');
       }
 
       // Check if already marked for this session
