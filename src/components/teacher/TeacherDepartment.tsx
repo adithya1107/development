@@ -72,6 +72,7 @@ const TeacherDepartment = ({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const selectedChannelIdRef = useRef<string | null>(null); // 🔥 KEY FIX: Track selected channel reliably
 
   const userId = teacherData?.id || teacherData?.user_id;
 
@@ -89,25 +90,43 @@ const TeacherDepartment = ({
     }
   }, [department?.id]);
 
+  // 🔥 KEY FIX: Update ref whenever selectedChannel changes
+  useEffect(() => {
+    selectedChannelIdRef.current = selectedChannel?.id || null;
+    console.log('📌 Selected channel ref updated:', selectedChannelIdRef.current);
+  }, [selectedChannel?.id]);
+
   useEffect(() => {
     if (!selectedChannel) return;
 
     console.log('📡 Setting up realtime subscription for channel:', selectedChannel.id);
 
     const subscription = subscribeToMessages(selectedChannel.id, (newMsg) => {
-      console.log('📨 Real-time message received:', newMsg);
-      
-      setMessages((prev) => {
-        const exists = prev.some(msg => msg.id === newMsg.id);
-        if (exists) {
-          console.log('⚠️ Duplicate message detected, replacing');
-          return prev.map(msg => msg.id === newMsg.id ? newMsg : msg);
-        }
-        console.log('✅ Adding new message to state');
-        return [...prev, newMsg];
+      console.log('📨 Real-time message received:', {
+        id: newMsg.id,
+        channel_id: newMsg.channel_id,
+        current_channel: selectedChannelIdRef.current,
+        matches: newMsg.channel_id === selectedChannelIdRef.current
       });
       
-      setTimeout(scrollToBottom, 100);
+      // 🔥 KEY FIX: Use ref instead of state to check channel match
+      if (newMsg.channel_id === selectedChannelIdRef.current) {
+        console.log('✅ Message is for current channel, adding to messages');
+        
+        setMessages((prev) => {
+          const exists = prev.some(msg => msg.id === newMsg.id);
+          if (exists) {
+            console.log('⚠️ Duplicate message detected, replacing');
+            return prev.map(msg => msg.id === newMsg.id ? newMsg : msg);
+          }
+          console.log('✅ Adding new message to state');
+          return [...prev, newMsg];
+        });
+        
+        setTimeout(scrollToBottom, 100);
+      } else {
+        console.log('⏭️ Message is for different channel, ignoring');
+      }
     });
 
     setRealtimeStatus('connected');

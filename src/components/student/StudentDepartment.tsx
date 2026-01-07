@@ -33,6 +33,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
   
   const eventsSubscriptionRef = useRef<any>(null);
   const announcementsSubscriptionRef = useRef<any>(null);
+  const departmentIdRef = useRef<string | null>(null); // 🔥 KEY FIX: Track department ID reliably
 
   useEffect(() => {
     const userId = studentData?.id || studentData?.user_id;
@@ -53,6 +54,12 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
       cleanupSubscriptions();
     };
   }, [studentData]);
+
+  // 🔥 KEY FIX: Update ref whenever department changes
+  useEffect(() => {
+    departmentIdRef.current = department?.id || null;
+    console.log('📌 Department ref updated:', departmentIdRef.current);
+  }, [department?.id]);
 
   useEffect(() => {
     if (department?.id) {
@@ -82,48 +89,56 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
     console.log('📡 Setting up realtime subscriptions for department:', department.id);
 
-    // Subscribe to events
+    // Subscribe to events with database-level filter
     const eventsChannelName = `dept-events-${department.id}-${Date.now()}`;
     eventsSubscriptionRef.current = supabase
       .channel(eventsChannelName)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
-        table: 'department_events'
+        table: 'department_events',
+        filter: `department_id=eq.${department.id}` // 🔥 Database filter
       }, (payload) => {
-        console.log('📅 New event:', payload.new);
-        if ((payload.new as any).department_id === department.id) {
-          setEvents(prev => {
-            const exists = prev.some(e => e.id === payload.new.id);
-            if (exists) return prev;
-            return [payload.new as any, ...prev];
-          });
-          
-          toast({
-            title: '📅 New Event Added',
-            description: (payload.new as any).event_name,
-            duration: 4000,
-          });
-        }
+        console.log('📅 New event:', {
+          id: payload.new.id,
+          department_id: (payload.new as any).department_id,
+          current_dept: departmentIdRef.current
+        });
+        
+        setEvents(prev => {
+          const exists = prev.some(e => e.id === payload.new.id);
+          if (exists) {
+            console.log('⚠️ Duplicate event detected, skipping');
+            return prev;
+          }
+          console.log('✅ Adding new event to state');
+          return [payload.new as any, ...prev];
+        });
+        
+        toast({
+          title: '📅 New Event Added',
+          description: (payload.new as any).event_title,
+          duration: 4000,
+        });
       })
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
-        table: 'department_events'
+        table: 'department_events',
+        filter: `department_id=eq.${department.id}` // 🔥 Database filter
       }, (payload) => {
         console.log('📝 Event updated:', payload.new);
-        if ((payload.new as any).department_id === department.id) {
-          setEvents(prev =>
-            prev.map(event =>
-              event.id === payload.new.id ? payload.new as any : event
-            )
-          );
-        }
+        setEvents(prev =>
+          prev.map(event =>
+            event.id === payload.new.id ? payload.new as any : event
+          )
+        );
       })
       .on('postgres_changes', {
         event: 'DELETE',
         schema: 'public',
-        table: 'department_events'
+        table: 'department_events',
+        filter: `department_id=eq.${department.id}` // 🔥 Database filter
       }, (payload) => {
         console.log('🗑️ Event deleted:', payload.old);
         setEvents(prev => prev.filter(event => event.id !== payload.old.id));
@@ -138,20 +153,31 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         }
       });
 
-    // Subscribe to announcements
+    // Subscribe to announcements with database-level filter
     const announcementsChannelName = `dept-announcements-${department.id}-${Date.now()}`;
     announcementsSubscriptionRef.current = supabase
       .channel(announcementsChannelName)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
-        table: 'announcements'
+        table: 'announcements',
+        filter: `department_id=eq.${department.id}` // 🔥 Database filter
       }, (payload) => {
-        console.log('📢 New announcement:', payload.new);
-        if ((payload.new as any).department_id === department.id && (payload.new as any).is_active) {
+        console.log('📢 New announcement:', {
+          id: payload.new.id,
+          department_id: (payload.new as any).department_id,
+          current_dept: departmentIdRef.current,
+          is_active: (payload.new as any).is_active
+        });
+        
+        if ((payload.new as any).is_active) {
           setAnnouncements(prev => {
             const exists = prev.some(a => a.id === payload.new.id);
-            if (exists) return prev;
+            if (exists) {
+              console.log('⚠️ Duplicate announcement detected, skipping');
+              return prev;
+            }
+            console.log('✅ Adding new announcement to state');
             return [payload.new as any, ...prev];
           });
           
@@ -165,21 +191,21 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
-        table: 'announcements'
+        table: 'announcements',
+        filter: `department_id=eq.${department.id}` // 🔥 Database filter
       }, (payload) => {
         console.log('📝 Announcement updated:', payload.new);
-        if ((payload.new as any).department_id === department.id) {
-          setAnnouncements(prev =>
-            prev.map(ann =>
-              ann.id === payload.new.id ? payload.new as any : ann
-            ).filter(a => a.is_active)
-          );
-        }
+        setAnnouncements(prev =>
+          prev.map(ann =>
+            ann.id === payload.new.id ? payload.new as any : ann
+          ).filter(a => a.is_active)
+        );
       })
       .on('postgres_changes', {
         event: 'DELETE',
         schema: 'public',
-        table: 'announcements'
+        table: 'announcements',
+        filter: `department_id=eq.${department.id}` // 🔥 Database filter
       }, (payload) => {
         console.log('🗑️ Announcement deleted:', payload.old);
         setAnnouncements(prev => prev.filter(ann => ann.id !== payload.old.id));

@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   MessageSquare, 
   Send,
@@ -21,19 +22,27 @@ import {
   ArrowLeft,
   CheckCheck,
   UserPlus,
-  Globe
+  Globe,
+  Wifi,
+  WifiOff,
+  AlertCircle,
+  Loader2,
+  Menu,
+  MoreVertical,
+  Pin,
+  Settings
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 const TeacherCommunication = ({ teacherData }) => {
+  // Courses and Announcements
   const [courses, setCourses] = useState([]);
   const [selectedCourse, setSelectedCourse] = useState("");
   const [announcements, setAnnouncements] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
-
+  
   // Communication Hub states
+  const [activeTab, setActiveTab] = useState('chats');
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [contactSearchQuery, setContactSearchQuery] = useState('');
@@ -41,14 +50,24 @@ const TeacherCommunication = ({ teacherData }) => {
   const [channels, setChannels] = useState([]);
   const [messages, setMessages] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showMobileSidebar, setShowMobileSidebar] = useState(true);
-  const [showNewChatDialog, setShowNewChatDialog] = useState(false);
   const [lastReadTimestamps, setLastReadTimestamps] = useState({});
   const [typingUsers, setTypingUsers] = useState({});
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
+  const [realtimeStatus, setRealtimeStatus] = useState('connecting');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [showNewChatDialog, setShowNewChatDialog] = useState(false);
+  
+  // Refs
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const messageChannelRef = useRef(null);
+  const typingChannelRef = useRef(null);
+  const currentChannelIdRef = useRef(null); // 🔥 KEY FIX: Track current channel reliably
+  const { toast } = useToast();
 
   const [newAnnouncement, setNewAnnouncement] = useState({
     title: '',
@@ -56,212 +75,196 @@ const TeacherCommunication = ({ teacherData }) => {
     announcement_type: 'academic',
     priority: 'normal',
     course_id: '',
-    target_type: 'course' // 'course' or 'general'
+    target_type: 'course'
   });
 
+  // Initialize on mount
   useEffect(() => {
-    fetchCourses();
-    if (teacherData?.user_id) {
-      fetchChannels();
-      fetchContacts();
-      loadLastReadTimestamps();
-      setupRealtimeSubscriptions();
+    if (!teacherData?.user_id) {
+      console.error('❌ No teacherData or user_id provided');
+      setLoading(false);
+      return;
     }
-  }, [teacherData]);
+    
+    console.log('✅ Initializing for teacher:', teacherData.user_id);
+    
+    const initialize = async () => {
+      try {
+        await Promise.all([
+          fetchCourses(),
+          fetchChannels(),
+          fetchContacts()
+        ]);
+        loadLastReadTimestamps();
+        await setupRealtimeSubscriptions();
+      } catch (error) {
+        console.error('❌ Error initializing:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    initialize();
+    
+    return () => {
+      console.log('🧹 Cleaning up subscriptions');
+      cleanupSubscriptions();
+    };
+  }, [teacherData?.user_id]);
 
+  // 🔥 KEY FIX: Update ref whenever selectedChannel changes
+  useEffect(() => {
+    currentChannelIdRef.current = selectedChannel?.id || null;
+    console.log('📌 Current channel ref updated:', currentChannelIdRef.current);
+  }, [selectedChannel?.id]);
+
+  // Fetch announcements when course changes
   useEffect(() => {
     if (selectedCourse) {
       fetchAnnouncements();
     }
   }, [selectedCourse]);
 
+  // Fetch messages when channel changes
   useEffect(() => {
     if (selectedChannel) {
       fetchMessages(selectedChannel.id);
       markChannelAsRead(selectedChannel.id);
     }
-  }, [selectedChannel]);
+  }, [selectedChannel?.id]);
 
+  // Scroll to bottom when messages update
   useEffect(() => {
     if (messages.length > 0) {
       scrollToBottom();
     }
   }, [messages]);
 
-  const setupRealtimeSubscriptions = () => {
-    const messageSubscription = supabase
-      .channel('messages')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          handleNewMessage(payload.new);
-        }
-      )
-      .subscribe();
+  const cleanupSubscriptions = () => {
+    console.log('🧹 Cleaning up all subscriptions');
+    if (messageChannelRef.current) {
+      supabase.removeChannel(messageChannelRef.current);
+      messageChannelRef.current = null;
+    }
+    if (typingChannelRef.current) {
+      supabase.removeChannel(typingChannelRef.current);
+      typingChannelRef.current = null;
+    }
+  };
 
-    const typingChannel = supabase.channel('typing-indicators');
-    typingChannel
+  const setupRealtimeSubscriptions = async () => {
+    console.log('📡 Setting up realtime subscriptions');
+
+    // Messages subscription
+    const messageChannelName = `teacher-messages-${teacherData.user_id}-${Date.now()}`;
+    messageChannelRef.current = supabase
+      .channel(messageChannelName)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages'
+      }, (payload) => {
+        console.log('📨 New message received:', {
+          id: payload.new.id,
+          channel_id: payload.new.channel_id,
+          current_channel: currentChannelIdRef.current,
+          matches: payload.new.channel_id === currentChannelIdRef.current
+        });
+        
+        handleNewMessage(payload.new);
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages'
+      }, (payload) => {
+        // 🔥 Use ref
+        if (payload.new.channel_id === currentChannelIdRef.current) {
+          console.log('📝 Message updated:', payload.new);
+          setMessages(prev =>
+            prev.map(msg => msg.id === payload.new.id ? payload.new : msg)
+          );
+        }
+      })
+      .subscribe((status) => {
+        console.log('📡 Messages subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          setRealtimeStatus('connected');
+          console.log('✅ Successfully subscribed to messages');
+        } else if (status === 'CHANNEL_ERROR') {
+          setRealtimeStatus('error');
+        }
+      });
+
+    // Typing indicators subscription
+    const typingChannelName = `teacher-typing-${Date.now()}`;
+    typingChannelRef.current = supabase
+      .channel(typingChannelName)
       .on('broadcast', { event: 'typing' }, (payload) => {
         handleTypingIndicator(payload);
       })
-      .subscribe();
-
-    return () => {
-      messageSubscription.unsubscribe();
-      typingChannel.unsubscribe();
-    };
-  };
-
-  const fetchCourses = async () => {
-    try {
-      setLoading(true);
-      const { data } = await supabase
-        .from('courses')
-        .select('id, course_name, course_code')
-        .eq('instructor_id', teacherData.user_id)
-        .eq('is_active', true);
-
-      setCourses(data || []);
-    } catch (error) {
-      console.error('Error fetching courses:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchAnnouncements = async () => {
-    if (!selectedCourse) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('announcements')
-        .select(`
-          *,
-          courses!announcements_course_id_fkey (
-            course_name,
-            course_code
-          )
-        `)
-        .eq('course_id', selectedCourse)
-        .eq('created_by', teacherData.user_id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setAnnouncements(data || []);
-    } catch (error) {
-      console.error('Error fetching announcements:', error);
-    }
-  };
-
-  const createAnnouncement = async () => {
-    if (newAnnouncement.target_type === 'course' && !newAnnouncement.course_id) {
-      toast({
-        title: 'Error',
-        description: 'Please select a course for course-specific announcement',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      const announcementData = {
-        title: newAnnouncement.title,
-        content: newAnnouncement.content,
-        announcement_type: newAnnouncement.announcement_type,
-        priority: newAnnouncement.priority,
-        college_id: teacherData.college_id,
-        created_by: teacherData.user_id,
-        is_active: true
-      };
-
-      // Add course_id and target_audience based on type
-      if (newAnnouncement.target_type === 'course') {
-        announcementData.course_id = newAnnouncement.course_id;
-        announcementData.target_audience = { 
-          type: 'course', 
-          course_id: newAnnouncement.course_id 
-        };
-      } else {
-        announcementData.course_id = null;
-        announcementData.target_audience = { type: 'all_students' };
-      }
-
-      const { error } = await supabase
-        .from('announcements')
-        .insert(announcementData);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: `${newAnnouncement.target_type === 'course' ? 'Course' : 'General'} announcement created successfully`
+      .subscribe((status) => {
+        console.log('📡 Typing subscription status:', status);
       });
 
-      setNewAnnouncement({
-        title: '',
-        content: '',
-        announcement_type: 'academic',
-        priority: 'normal',
-        course_id: '',
-        target_type: 'course'
-      });
-
-      if (selectedCourse && newAnnouncement.target_type === 'course') {
-        fetchAnnouncements();
-      }
-    } catch (error) {
-      console.error('Error creating announcement:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to create announcement',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const deleteAnnouncement = async (announcementId) => {
-    try {
-      const { error } = await supabase
-        .from('announcements')
-        .delete()
-        .eq('id', announcementId)
-        .eq('created_by', teacherData.user_id);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: 'Announcement deleted successfully'
-      });
-
-      fetchAnnouncements();
-    } catch (error) {
-      console.error('Error deleting announcement:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to delete announcement',
-        variant: 'destructive'
-      });
-    }
+    console.log('✅ Realtime subscriptions active');
   };
 
   const handleNewMessage = async (newMessageData) => {
+    console.log('📨 Processing new message:', newMessageData);
+    
+    // Refresh channels to update last message
     await fetchChannels();
     
-    if (selectedChannel && newMessageData.channel_id === selectedChannel.id) {
-      await fetchMessages(selectedChannel.id);
+    // 🔥 KEY FIX: Use ref instead of state
+    if (currentChannelIdRef.current === newMessageData.channel_id) {
+      console.log('✅ Message is for current channel, adding to messages');
       
+      // Fetch full message data with sender info
+      const { data: fullMessage } = await supabase
+        .from('messages')
+        .select(`
+          *,
+          sender:user_profiles!messages_sender_id_fkey(
+            first_name,
+            last_name,
+            user_type
+          )
+        `)
+        .eq('id', newMessageData.id)
+        .single();
+
+      if (fullMessage) {
+        setMessages(prev => {
+          const exists = prev.some(msg => msg.id === fullMessage.id);
+          if (exists) {
+            console.log('⚠️ Duplicate message detected, replacing');
+            return prev.map(msg => msg.id === fullMessage.id ? fullMessage : msg);
+          }
+          console.log('✅ Adding new message to state');
+          return [...prev, fullMessage];
+        });
+        
+        setTimeout(scrollToBottom, 100);
+      }
+      
+      // Mark as read if window has focus
       if (document.hasFocus()) {
-        markChannelAsRead(selectedChannel.id);
+        markChannelAsRead(newMessageData.channel_id);
       }
     } else {
-      const channel = channels.find(c => c.id === newMessageData.channel_id);
-      if (channel && newMessageData.sender_id !== teacherData.user_id) {
-        toast({
-          title: channel.channel_name,
-          description: newMessageData.message_text.substring(0, 50) + '...',
-          duration: 3000,
-        });
+      console.log('⏭️ Message is for different channel');
+      
+      // Show notification if message is from someone else
+      if (newMessageData.sender_id !== teacherData.user_id) {
+        const channel = channels.find(c => c.id === newMessageData.channel_id);
+        if (channel) {
+          toast({
+            title: getChannelDisplayName(channel),
+            description: newMessageData.message_text.substring(0, 50) + '...',
+            duration: 3000,
+          });
+        }
       }
     }
   };
@@ -279,6 +282,17 @@ const TeacherCommunication = ({ teacherData }) => {
       
       if (is_typing) {
         newState[channel_id][user_id] = user_name;
+        
+        // Auto-clear typing indicator after 5 seconds
+        setTimeout(() => {
+          setTypingUsers(current => {
+            const updated = { ...current };
+            if (updated[channel_id]?.[user_id]) {
+              delete updated[channel_id][user_id];
+            }
+            return updated;
+          });
+        }, 5000);
       } else {
         delete newState[channel_id][user_id];
       }
@@ -288,9 +302,9 @@ const TeacherCommunication = ({ teacherData }) => {
   };
 
   const sendTypingIndicator = (isTyping) => {
-    if (!selectedChannel) return;
+    if (!selectedChannel || !typingChannelRef.current) return;
     
-    supabase.channel('typing-indicators').send({
+    typingChannelRef.current.send({
       type: 'broadcast',
       event: 'typing',
       payload: {
@@ -315,7 +329,7 @@ const TeacherCommunication = ({ teacherData }) => {
   };
 
   const loadLastReadTimestamps = () => {
-    const stored = localStorage.getItem(`lastRead_${teacherData.user_id}`);
+    const stored = localStorage.getItem(`lastRead_teacher_${teacherData.user_id}`);
     if (stored) {
       setLastReadTimestamps(JSON.parse(stored));
     }
@@ -325,11 +339,68 @@ const TeacherCommunication = ({ teacherData }) => {
     const now = new Date().toISOString();
     const updated = { ...lastReadTimestamps, [channelId]: now };
     setLastReadTimestamps(updated);
-    localStorage.setItem(`lastRead_${teacherData.user_id}`, JSON.stringify(updated));
+    localStorage.setItem(`lastRead_teacher_${teacherData.user_id}`, JSON.stringify(updated));
+  };
+
+  const getChannelDisplayName = (channel) => {
+    if (channel.channel_type === 'direct_message' && channel.other_user) {
+      return `${channel.other_user.first_name} ${channel.other_user.last_name}`;
+    }
+    return channel.channel_name;
+  };
+
+  const fetchCourses = async () => {
+    try {
+      console.log('📋 Fetching courses for teacher:', teacherData.user_id);
+      
+      const { data, error } = await supabase
+        .from('courses')
+        .select('id, course_name, course_code')
+        .eq('instructor_id', teacherData.user_id)
+        .eq('is_active', true);
+
+      if (error) throw error;
+      
+      console.log('✅ Courses loaded:', data?.length || 0);
+      setCourses(data || []);
+    } catch (error) {
+      console.error('❌ Error fetching courses:', error);
+    }
+  };
+
+  const fetchAnnouncements = async () => {
+    if (!selectedCourse) return;
+
+    try {
+      console.log('📋 Fetching announcements for course:', selectedCourse);
+      
+      const { data, error } = await supabase
+        .from('announcements')
+        .select(`
+          *,
+          courses!announcements_course_id_fkey (
+            course_name,
+            course_code
+          )
+        `)
+        .eq('course_id', selectedCourse)
+        .eq('created_by', teacherData.user_id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      console.log('✅ Announcements loaded:', data?.length || 0);
+      setAnnouncements(data || []);
+    } catch (error) {
+      console.error('❌ Error fetching announcements:', error);
+    }
   };
 
   const fetchChannels = async () => {
     try {
+      console.log('📋 Fetching channels for teacher:', teacherData.user_id);
+      
+      // Get channels where teacher is a member
       const { data: memberChannels, error: memberError } = await supabase
         .from('channel_members')
         .select('channel_id')
@@ -340,10 +411,12 @@ const TeacherCommunication = ({ teacherData }) => {
       const channelIds = memberChannels?.map(m => m.channel_id) || [];
 
       if (channelIds.length === 0) {
+        console.log('⚠️ No channels found');
         setChannels([]);
         return;
       }
 
+      // Fetch channel details
       const { data: channelData, error: channelError } = await supabase
         .from('communication_channels')
         .select(`
@@ -358,8 +431,10 @@ const TeacherCommunication = ({ teacherData }) => {
 
       if (channelError) throw channelError;
 
-      const channelsWithMessages = await Promise.all(
+      // Enrich channels with last message and member count
+      const channelsWithDetails = await Promise.all(
         (channelData || []).map(async (channel) => {
+          // Get last message
           const { data: lastMessage } = await supabase
             .from('messages')
             .select(`
@@ -372,33 +447,53 @@ const TeacherCommunication = ({ teacherData }) => {
             .limit(1)
             .single();
 
+          // Get member count
           const { count } = await supabase
             .from('channel_members')
             .select('*', { count: 'exact', head: true })
             .eq('channel_id', channel.id);
+
+          // For direct messages, get the other user
+          let otherUser = null;
+          if (channel.channel_type === 'direct_message') {
+            const { data: members } = await supabase
+              .from('channel_members')
+              .select('user_id, user_profiles!inner(*)')
+              .eq('channel_id', channel.id)
+              .neq('user_id', teacherData.user_id);
+            
+            if (members && members.length > 0) {
+              otherUser = members[0].user_profiles;
+            }
+          }
 
           return {
             ...channel,
             lastMessage: lastMessage?.message_text || 'No messages yet',
             lastMessageTime: lastMessage?.created_at || channel.created_at,
             lastMessageSender: lastMessage?.sender,
-            memberCount: count || 0
+            memberCount: count || 0,
+            other_user: otherUser
           };
         })
       );
 
-      channelsWithMessages.sort((a, b) => 
+      // Sort by last message time
+      channelsWithDetails.sort((a, b) => 
         new Date(b.lastMessageTime) - new Date(a.lastMessageTime)
       );
 
-      setChannels(channelsWithMessages);
+      console.log('✅ Channels loaded:', channelsWithDetails.length);
+      setChannels(channelsWithDetails);
     } catch (error) {
-      console.error('Error fetching channels:', error);
+      console.error('❌ Error fetching channels:', error);
     }
   };
 
   const fetchMessages = async (channelId) => {
     try {
+      console.log('📋 Fetching messages for channel:', channelId);
+      
       const { data, error } = await supabase
         .from('messages')
         .select(`
@@ -406,7 +501,8 @@ const TeacherCommunication = ({ teacherData }) => {
           sender:user_profiles!messages_sender_id_fkey(
             first_name,
             last_name,
-            user_type
+            user_type,
+            profile_picture_url
           )
         `)
         .eq('channel_id', channelId)
@@ -414,15 +510,19 @@ const TeacherCommunication = ({ teacherData }) => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+      
+      console.log('✅ Messages loaded:', data?.length || 0);
       setMessages(data || []);
       setTimeout(scrollToBottom, 100);
     } catch (error) {
-      console.error('Error fetching messages:', error);
+      console.error('❌ Error fetching messages:', error);
     }
   };
 
   const fetchContacts = async () => {
     try {
+      console.log('📋 Fetching contacts for teacher');
+      
       // Teachers can contact other teachers, students, and alumni
       const allowedUserTypes = ['teacher', 'student', 'alumni'];
       
@@ -436,13 +536,16 @@ const TeacherCommunication = ({ teacherData }) => {
         .order('first_name');
 
       if (error) throw error;
+      
+      console.log('✅ Contacts loaded:', data?.length || 0);
       setContacts(data || []);
     } catch (error) {
-      console.error('Error fetching contacts:', error);
+      console.error('❌ Error fetching contacts:', error);
     }
   };
 
   const handleChannelSelect = async (channel) => {
+    console.log('📌 Selecting channel:', channel.channel_name);
     setSelectedChannel(channel);
     setMessages([]);
     await fetchMessages(channel.id);
@@ -454,36 +557,87 @@ const TeacherCommunication = ({ teacherData }) => {
     if (!newMessage.trim() || !selectedChannel) return;
 
     const messageText = newMessage.trim();
+    const tempId = `temp-${Date.now()}`;
+    
+    console.log('📤 Sending message:', {
+      channel_id: selectedChannel.id,
+      text: messageText.substring(0, 30)
+    });
+
+    // Optimistic UI update
+    const optimisticMessage = {
+      id: tempId,
+      tempId: tempId,
+      channel_id: selectedChannel.id,
+      sender_id: teacherData.user_id,
+      message_text: messageText,
+      message_type: 'text',
+      created_at: new Date().toISOString(),
+      sender: {
+        first_name: teacherData.first_name,
+        last_name: teacherData.last_name,
+        user_type: 'teacher'
+      },
+      sending: true
+    };
+
+    setMessages(prev => [...prev, optimisticMessage]);
     setNewMessage('');
     sendTypingIndicator(false);
+    setSendingMessage(true);
+    setTimeout(scrollToBottom, 50);
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('messages')
         .insert({
           channel_id: selectedChannel.id,
           sender_id: teacherData.user_id,
           message_text: messageText,
           message_type: 'text'
-        });
+        })
+        .select(`
+          *,
+          sender:user_profiles!messages_sender_id_fkey(
+            first_name,
+            last_name,
+            user_type
+          )
+        `)
+        .single();
 
       if (error) throw error;
 
-      await fetchMessages(selectedChannel.id);
+      console.log('✅ Message sent successfully:', data.id);
+
+      // Replace optimistic message with real one
+      setMessages(prev =>
+        prev.map(msg => msg.tempId === tempId ? { ...data, sending: false } : msg)
+      );
+
       await fetchChannels();
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', error);
+      
+      // Remove failed message and restore text
+      setMessages(prev => prev.filter(msg => msg.tempId !== tempId));
       setNewMessage(messageText);
+      
       toast({
-        title: 'Error',
-        description: 'Failed to send message',
+        title: 'Failed to send',
+        description: 'Check your connection and try again',
         variant: 'destructive'
       });
+    } finally {
+      setSendingMessage(false);
     }
   };
 
   const createDirectChannel = async (contactId) => {
     try {
+      console.log('💬 Creating direct channel with:', contactId);
+      
+      // Check if direct channel already exists
       const { data: existingChannels } = await supabase
         .from('channel_members')
         .select('channel_id')
@@ -505,6 +659,7 @@ const TeacherCommunication = ({ teacherData }) => {
         if (existingDirect) {
           const channel = channels.find(c => c.id === existingDirect.channel_id);
           if (channel) {
+            console.log('✅ Found existing channel');
             setSelectedChannel(channel);
             await fetchMessages(channel.id);
             setShowNewChatDialog(false);
@@ -515,6 +670,7 @@ const TeacherCommunication = ({ teacherData }) => {
         }
       }
 
+      // Create new channel
       const contact = contacts.find(c => c.id === contactId);
       const { data: newChannel, error: channelError } = await supabase
         .from('communication_channels')
@@ -539,19 +695,129 @@ const TeacherCommunication = ({ teacherData }) => {
 
       if (memberError) throw memberError;
 
+      console.log('✅ Direct channel created');
+      
       await fetchChannels();
       setShowNewChatDialog(false);
       setContactSearchQuery('');
       
       toast({
-        title: 'Success',
+        title: '✓ Success',
         description: 'Conversation started'
       });
     } catch (error) {
-      console.error('Error creating channel:', error);
+      console.error('❌ Error creating channel:', error);
       toast({
         title: 'Error',
         description: 'Failed to start conversation',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const createAnnouncement = async () => {
+    if (newAnnouncement.target_type === 'course' && !newAnnouncement.course_id) {
+      toast({
+        title: 'Error',
+        description: 'Please select a course for course-specific announcement',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (!newAnnouncement.title.trim() || !newAnnouncement.content.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Title and content are required',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      console.log('📢 Creating announcement');
+      
+      const announcementData = {
+        title: newAnnouncement.title,
+        content: newAnnouncement.content,
+        announcement_type: newAnnouncement.announcement_type,
+        priority: newAnnouncement.priority,
+        college_id: teacherData.college_id,
+        created_by: teacherData.user_id,
+        is_active: true
+      };
+
+      if (newAnnouncement.target_type === 'course') {
+        announcementData.course_id = newAnnouncement.course_id;
+        announcementData.target_audience = { 
+          type: 'course', 
+          course_id: newAnnouncement.course_id 
+        };
+      } else {
+        announcementData.course_id = null;
+        announcementData.target_audience = { type: 'all_students' };
+      }
+
+      const { error } = await supabase
+        .from('announcements')
+        .insert(announcementData);
+
+      if (error) throw error;
+
+      console.log('✅ Announcement created');
+
+      toast({
+        title: '✓ Success',
+        description: `${newAnnouncement.target_type === 'course' ? 'Course' : 'General'} announcement created`
+      });
+
+      setNewAnnouncement({
+        title: '',
+        content: '',
+        announcement_type: 'academic',
+        priority: 'normal',
+        course_id: '',
+        target_type: 'course'
+      });
+
+      if (selectedCourse && newAnnouncement.target_type === 'course') {
+        fetchAnnouncements();
+      }
+    } catch (error) {
+      console.error('❌ Error creating announcement:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create announcement',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const deleteAnnouncement = async (announcementId) => {
+    try {
+      console.log('🗑️ Deleting announcement:', announcementId);
+      
+      const { error } = await supabase
+        .from('announcements')
+        .delete()
+        .eq('id', announcementId)
+        .eq('created_by', teacherData.user_id);
+
+      if (error) throw error;
+
+      console.log('✅ Announcement deleted');
+
+      toast({
+        title: '✓ Success',
+        description: 'Announcement deleted'
+      });
+
+      fetchAnnouncements();
+    } catch (error) {
+      console.error('❌ Error deleting announcement:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete announcement',
         variant: 'destructive'
       });
     }
@@ -587,14 +853,6 @@ const TeacherCommunication = ({ teacherData }) => {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const filteredChannels = channels.filter(channel =>
-    channel.channel_name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const filteredContacts = contacts.filter(contact =>
-    `${contact.first_name} ${contact.last_name}`.toLowerCase().includes(contactSearchQuery.toLowerCase())
-  );
-
   const getTypingText = () => {
     if (!selectedChannel || !typingUsers[selectedChannel.id]) return null;
     
@@ -606,47 +864,99 @@ const TeacherCommunication = ({ teacherData }) => {
     return `${typing.length} people are typing...`;
   };
 
+  const getConnectionStatusIcon = () => {
+    switch (realtimeStatus) {
+      case 'connected':
+        return <Wifi className="h-4 w-4 text-green-500" />;
+      case 'disconnected':
+        return <WifiOff className="h-4 w-4 text-gray-500" />;
+      case 'error':
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      case 'connecting':
+        return <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />;
+    }
+  };
+
+  const hasUnreadMessages = (channelId) => {
+    const lastRead = lastReadTimestamps[channelId];
+    const channel = channels.find(c => c.id === channelId);
+    if (!channel || !lastRead) return false;
+    return new Date(channel.lastMessageTime) > new Date(lastRead);
+  };
+
+  const filteredChannels = channels.filter(channel =>
+    getChannelDisplayName(channel).toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredContacts = contacts.filter(contact =>
+    `${contact.first_name} ${contact.last_name}`.toLowerCase().includes(contactSearchQuery.toLowerCase())
+  );
+
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-white/20 border-t-white rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-foreground/70">Loading...</p>
+          <Loader2 className="h-16 w-16 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-foreground/70">Loading Communication Hub...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      <div className="bg-sidebar-background border-b border-border px-4 sm:px-6 py-3 sm:py-4">
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
+      {/* Header */}
+      <div className="bg-sidebar-background border-b border-border px-4 sm:px-6 py-3 sm:py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground">Communication Hub</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Messages and Announcements</p>
+            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
+              Messages and Announcements
+            </p>
+          </div>
+          
+          {/* Connection Status */}
+          <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg border ${
+            realtimeStatus === 'connected' ? 'bg-green-500/10 border-green-500/20' :
+            realtimeStatus === 'error' ? 'bg-red-500/10 border-red-500/20' :
+            'bg-yellow-500/10 border-yellow-500/20'
+          }`}>
+            {getConnectionStatusIcon()}
+            <span className="text-xs font-medium capitalize hidden sm:inline">
+              {realtimeStatus}
+            </span>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        <Tabs defaultValue="messages" className="h-full flex flex-col">
-          <TabsList className="w-full grid grid-cols-2 rounded-none border-b">
-            <TabsTrigger value="messages" className="text-xs sm:text-sm">Messages</TabsTrigger>
-            <TabsTrigger value="announcements" className="text-xs sm:text-sm">Announcements</TabsTrigger>
+      {/* Main Content */}
+      <div className="flex-1 overflow-hidden min-h-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+          {/* Tab Navigation */}
+          <TabsList className="w-full grid grid-cols-2 rounded-none border-b flex-shrink-0">
+            <TabsTrigger value="chats" className="text-xs sm:text-sm">
+              <MessageSquare className="h-4 w-4 mr-2" />
+              Messages
+            </TabsTrigger>
+            <TabsTrigger value="announcements" className="text-xs sm:text-sm">
+              <Megaphone className="h-4 w-4 mr-2" />
+              Announcements
+            </TabsTrigger>
           </TabsList>
 
-          {/* Messages Tab */}
-          <TabsContent value="messages" className="flex-1 m-0 overflow-hidden">
+          {/* Chats Tab */}
+          <TabsContent value="chats" className="flex-1 m-0 overflow-hidden">
             <div className="h-full flex overflow-hidden">
               {/* Sidebar */}
-              <div className={`w-full lg:w-80 bg-sidebar-background border-r border-sidebar-border flex flex-col ${
+              <div className={`w-full lg:w-80 bg-sidebar-background border-r border-border flex flex-col ${
                 selectedChannel ? 'hidden lg:flex' : 'flex'
               }`}>
-                <div className="p-3 sm:p-4 border-b border-sidebar-border">
+                {/* Search and New Chat */}
+                <div className="p-3 sm:p-4 border-b border-border flex-shrink-0">
                   <div className="relative mb-3">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Search messages..."
+                      placeholder="Search conversations..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10 bg-input border-border text-foreground text-sm"
@@ -662,21 +972,24 @@ const TeacherCommunication = ({ teacherData }) => {
                   </Button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-1 p-2">
+                {/* Channels List */}
+                <div className="flex-1 overflow-y-auto space-y-1 p-2 min-h-0">
                   {filteredChannels.length === 0 ? (
                     <div className="text-center py-8">
                       <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-2" />
                       <p className="text-muted-foreground text-sm">No conversations yet</p>
+                      <p className="text-xs text-muted-foreground mt-1">Start a new chat</p>
                     </div>
                   ) : (
                     filteredChannels.map(channel => {
                       const isGroup = channel.channel_type === 'group' || channel.channel_type === 'course';
+                      const unread = hasUnreadMessages(channel.id);
                       
                       return (
                         <div
                           key={channel.id}
                           onClick={() => handleChannelSelect(channel)}
-                          className={`p-3 rounded-sm cursor-pointer transition-all ${
+                          className={`p-3 rounded-lg cursor-pointer transition-all group ${
                             selectedChannel?.id === channel.id
                               ? 'bg-accent border-l-2 border-primary'
                               : 'hover:bg-accent/50'
@@ -684,34 +997,44 @@ const TeacherCommunication = ({ teacherData }) => {
                         >
                           <div className="flex items-start space-x-3">
                             <div className="relative flex-shrink-0">
-                              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-sm flex items-center justify-center text-foreground font-semibold border border-border ${
+                              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-foreground text-sm font-semibold border border-border ${
                                 isGroup ? 'bg-primary/10' : 'bg-primary/5'
                               }`}>
-                                {channel.channel_name.substring(0, 2).toUpperCase()}
+                                {getChannelDisplayName(channel).substring(0, 2).toUpperCase()}
                               </div>
                               {isGroup && (
-                                <div className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-sidebar-background border-2 border-sidebar-border rounded-sm flex items-center justify-center">
+                                <div className="absolute -bottom-1 -right-1 w-4 h-4 sm:w-5 sm:h-5 bg-sidebar-background border-2 border-sidebar-border rounded-full flex items-center justify-center">
                                   <Users className="h-2 w-2 sm:h-3 sm:w-3 text-muted-foreground" />
                                 </div>
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between mb-1">
-                                <p className="font-semibold text-sm sm:text-base text-foreground truncate">{channel.channel_name}</p>
+                                <p className={`text-sm sm:text-base truncate ${unread ? 'font-bold text-foreground' : 'font-semibold text-foreground'}`}>
+                                  {getChannelDisplayName(channel)}
+                                </p>
                                 {channel.lastMessageTime && (
                                   <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
                                     {formatTimestamp(channel.lastMessageTime)}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs sm:text-sm text-muted-foreground truncate">
+                              <p className={`text-xs sm:text-sm truncate ${unread ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
                                 {channel.lastMessageSender && isGroup
                                   ? `${channel.lastMessageSender.first_name}: ${channel.lastMessage}`
                                   : channel.lastMessage
                                 }
                               </p>
                               {isGroup && (
-                                <p className="text-xs text-muted-foreground mt-1">{channel.memberCount} members</p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  <Users className="h-3 w-3 inline mr-1" />
+                                  {channel.memberCount} members
+                                </p>
+                              )}
+                              {unread && (
+                                <Badge variant="default" className="mt-1 h-5 px-2">
+                                  New
+                                </Badge>
                               )}
                             </div>
                           </div>
@@ -724,7 +1047,8 @@ const TeacherCommunication = ({ teacherData }) => {
 
               {/* Chat Area */}
               {selectedChannel ? (
-                <div className="w-full lg:flex-1 flex flex-col bg-background">
+                <div className="w-full lg:flex-1 flex flex-col bg-background min-h-0">
+                  {/* Chat Header */}
                   <div className="bg-sidebar-background border-b border-border px-3 sm:px-6 py-3 sm:py-4 flex-shrink-0">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2 sm:space-x-4 flex-1 min-w-0">
@@ -741,16 +1065,18 @@ const TeacherCommunication = ({ teacherData }) => {
                         </Button>
                         
                         <div className="relative flex-shrink-0">
-                          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-sm flex items-center justify-center text-foreground font-semibold border border-border ${
+                          <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-foreground text-sm font-semibold border border-border ${
                             selectedChannel.channel_type === 'group' || selectedChannel.channel_type === 'course'
                               ? 'bg-primary/10' 
                               : 'bg-primary/5'
                           }`}>
-                            {selectedChannel.channel_name.substring(0, 2).toUpperCase()}
+                            {getChannelDisplayName(selectedChannel).substring(0, 2).toUpperCase()}
                           </div>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h2 className="font-semibold text-sm sm:text-base text-foreground truncate">{selectedChannel.channel_name}</h2>
+                          <h2 className="font-semibold text-sm sm:text-base text-foreground truncate">
+                            {getChannelDisplayName(selectedChannel)}
+                          </h2>
                           <p className="text-xs sm:text-sm text-muted-foreground capitalize truncate">
                             {selectedChannel.channel_type === 'group' || selectedChannel.channel_type === 'course'
                               ? `${selectedChannel.memberCount} members`
@@ -762,6 +1088,7 @@ const TeacherCommunication = ({ teacherData }) => {
                     </div>
                   </div>
 
+                  {/* Messages Area */}
                   <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 md:space-y-4 min-h-0">
                     {messages.length === 0 ? (
                       <div className="flex items-center justify-center h-full">
@@ -779,37 +1106,37 @@ const TeacherCommunication = ({ teacherData }) => {
                           const showAvatar = !isMe && (index === 0 || messages[index - 1].sender_id !== message.sender_id);
                           
                           return (
-                            <div key={message.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                            <div key={message.id || message.tempId} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                               <div className={`flex items-end space-x-2 max-w-[85%] md:max-w-md ${isMe ? 'flex-row-reverse space-x-reverse' : ''}`}>
                                 {!isMe && showAvatar && (
-                                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary/10 border border-border rounded-sm flex items-center justify-center text-foreground text-[10px] sm:text-xs font-semibold flex-shrink-0 mb-1">
-                                    {getInitials(message.sender.first_name, message.sender.last_name)}
+                                  <div className="w-6 h-6 sm:w-8 sm:h-8 bg-primary/10 border border-border rounded-full flex items-center justify-center text-foreground text-[10px] sm:text-xs font-semibold flex-shrink-0 mb-1">
+                                    {getInitials(message.sender?.first_name, message.sender?.last_name)}
                                   </div>
                                 )}
                                 {!isMe && !showAvatar && (
-                                  <div className="w-7 h-7 md:w-8 md:h-8 flex-shrink-0"></div>
+                                  <div className="w-6 h-6 sm:w-8 sm:h-8 flex-shrink-0"></div>
                                 )}
                                 <div className="max-w-full">
                                   {isGroup && !isMe && showAvatar && (
                                     <p className="text-xs text-muted-foreground mb-1 ml-2">
-                                      {message.sender.first_name} {message.sender.last_name}
+                                      {message.sender?.first_name} {message.sender?.last_name}
                                     </p>
                                   )}
                                   <div
-                                    className={`px-3 md:px-4 py-2 ${
+                                    className={`px-3 md:px-4 py-2 rounded-2xl ${
                                       isMe
-                                        ? 'bg-primary text-primary-foreground rounded-sm rounded-br-none'
-                                        : 'bg-card border border-border text-foreground rounded-sm rounded-bl-none'
-                                    }`}
+                                        ? 'bg-primary text-primary-foreground rounded-br-none'
+                                        : 'bg-card border border-border text-foreground rounded-bl-none'
+                                    } ${message.sending ? 'opacity-60' : ''}`}
                                   >
                                     <p className="text-xs md:text-sm break-words">{message.message_text}</p>
                                   </div>
                                   <div className={`flex items-center space-x-1 mt-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                                     <span className="text-xs text-muted-foreground">
-                                      {formatMessageTime(message.created_at)}
+                                      {message.sending ? 'Sending...' : formatMessageTime(message.created_at)}
                                     </span>
-                                    {isMe && (
-                                      <CheckCheck className="h-3 w-3 text-muted-foreground" />
+                                    {isMe && !message.sending && (
+                                      <CheckCheck className="h-3 w-3 text-blue-500" />
                                     )}
                                   </div>
                                 </div>
@@ -822,40 +1149,44 @@ const TeacherCommunication = ({ teacherData }) => {
                     )}
                   </div>
 
+                  {/* Typing Indicator */}
                   {getTypingText() && (
                     <div className="px-4 md:px-6 py-2 bg-sidebar-background/50 flex-shrink-0">
                       <p className="text-xs md:text-sm text-muted-foreground italic">{getTypingText()}</p>
                     </div>
                   )}
 
+                  {/* Message Input */}
                   <div className="bg-sidebar-background border-t border-border px-3 md:px-6 py-3 md:py-4 flex-shrink-0">
                     <div className="flex items-end space-x-2">
-                      <div className="flex-1 relative">
-                        <Textarea
-                          ref={textareaRef}
-                          placeholder="Type a message..."
-                          value={newMessage}
-                          onChange={(e) => {
-                            setNewMessage(e.target.value);
-                            handleTyping();
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              handleSendMessage();
-                            }
-                          }}
-                          className="resize-none pr-10 bg-input border-border text-foreground min-h-[40px] max-h-[120px] text-sm"
-                          rows={1}
-                        />
-                      </div>
+                      <Textarea
+                        ref={textareaRef}
+                        placeholder="Type a message..."
+                        value={newMessage}
+                        onChange={(e) => {
+                          setNewMessage(e.target.value);
+                          handleTyping();
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage();
+                          }
+                        }}
+                        className="resize-none bg-input border-border text-foreground min-h-[44px] max-h-[120px] text-sm rounded-lg flex-1"
+                        rows={1}
+                        disabled={sendingMessage}
+                      />
                       <Button
                         onClick={handleSendMessage}
-                        disabled={!newMessage.trim()}
-                        className="flex-shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 h-9 w-9 sm:h-10 sm:w-10 p-0"
-                        size="sm"
+                        disabled={!newMessage.trim() || sendingMessage}
+                        className="flex-shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 h-11 w-11 rounded-full p-0"
                       >
-                        <Send className="h-4 w-4 sm:h-5 sm:w-5" />
+                        {sendingMessage ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : (
+                          <Send className="h-5 w-5" />
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -863,12 +1194,17 @@ const TeacherCommunication = ({ teacherData }) => {
               ) : (
                 <div className="hidden lg:flex flex-1 items-center justify-center bg-background">
                   <div className="text-center px-4">
-                    <div className="w-20 sm:w-24 h-20 sm:h-24 bg-primary/10 border border-border rounded-sm flex items-center justify-center mx-auto mb-4">
-                      <MessageSquare className="h-10 sm:h-12 w-10 sm:w-12 text-foreground" />
+                    <div className="w-20 sm:w-24 h-20 sm:h-24 bg-primary/10 border border-border rounded-full flex items-center justify-center mx-auto mb-4">
+                      <MessageSquare className="h-10 sm:h-12 w-10 sm:w-12 text-primary" />
                     </div>
                     <h3 className="text-lg sm:text-xl font-semibold text-foreground mb-2">Select a conversation</h3>
-                    <p className="text-sm md:text-base text-muted-foreground mb-6">Choose from your existing chats or start a new one</p>
-                    <Button onClick={() => setShowNewChatDialog(true)} className="bg-primary text-primary-foreground hover:bg-primary/90" size="sm">
+                    <p className="text-sm md:text-base text-muted-foreground mb-6">
+                      Choose from your existing chats or start a new one
+                    </p>
+                    <Button 
+                      onClick={() => setShowNewChatDialog(true)} 
+                      className="bg-primary text-primary-foreground hover:bg-primary/90"
+                    >
                       <MessageSquare className="h-4 w-4 mr-2" />
                       Start New Chat
                     </Button>
@@ -881,9 +1217,10 @@ const TeacherCommunication = ({ teacherData }) => {
           {/* Announcements Tab */}
           <TabsContent value="announcements" className="flex-1 m-0 overflow-hidden p-4 sm:p-6">
             <div className="space-y-4 h-full flex flex-col">
+              {/* Header */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 flex-shrink-0">
                 <div className="flex items-center gap-2">
-                  <Megaphone className="h-5 w-5" />
+                  <Megaphone className="h-5 w-5 text-primary" />
                   <h2 className="text-lg sm:text-xl font-semibold">Announcements</h2>
                 </div>
                 <Dialog>
@@ -893,7 +1230,7 @@ const TeacherCommunication = ({ teacherData }) => {
                       New Announcement
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="w-[95vw] sm:w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar">
+                  <DialogContent className="w-[95vw] sm:w-full max-w-lg max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle className="text-base sm:text-lg">Create Announcement</DialogTitle>
                     </DialogHeader>
@@ -945,48 +1282,67 @@ const TeacherCommunication = ({ teacherData }) => {
                         </div>
                       )}
 
-                      <Input
-                        placeholder="Announcement title *"
-                        value={newAnnouncement.title}
-                        onChange={(e) => setNewAnnouncement({...newAnnouncement, title: e.target.value})}
-                        className="text-sm"
-                      />
-                      <Textarea
-                        placeholder="Announcement content *"
-                        value={newAnnouncement.content}
-                        onChange={(e) => setNewAnnouncement({...newAnnouncement, content: e.target.value})}
-                        className="text-sm"
-                        rows={6}
-                      />
-                      <Select
-                        value={newAnnouncement.announcement_type}
-                        onValueChange={(value) => setNewAnnouncement({...newAnnouncement, announcement_type: value})}
-                      >
-                        <SelectTrigger className="text-sm">
-                          <SelectValue placeholder="Announcement type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="academic">Academic</SelectItem>
-                          <SelectItem value="general">General</SelectItem>
-                          <SelectItem value="emergency">Emergency</SelectItem>
-                          <SelectItem value="event">Event</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={newAnnouncement.priority}
-                        onValueChange={(value) => setNewAnnouncement({...newAnnouncement, priority: value})}
-                      >
-                        <SelectTrigger className="text-sm">
-                          <SelectValue placeholder="Priority" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="normal">Normal</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="urgent">Urgent</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <div className="space-y-2">
+                        <Label>Title *</Label>
+                        <Input
+                          placeholder="Announcement title"
+                          value={newAnnouncement.title}
+                          onChange={(e) => setNewAnnouncement({...newAnnouncement, title: e.target.value})}
+                          className="text-sm"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Content *</Label>
+                        <Textarea
+                          placeholder="Announcement content"
+                          value={newAnnouncement.content}
+                          onChange={(e) => setNewAnnouncement({...newAnnouncement, content: e.target.value})}
+                          className="text-sm"
+                          rows={6}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Type</Label>
+                          <Select
+                            value={newAnnouncement.announcement_type}
+                            onValueChange={(value) => setNewAnnouncement({...newAnnouncement, announcement_type: value})}
+                          >
+                            <SelectTrigger className="text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="academic">Academic</SelectItem>
+                              <SelectItem value="general">General</SelectItem>
+                              <SelectItem value="emergency">Emergency</SelectItem>
+                              <SelectItem value="event">Event</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Priority</Label>
+                          <Select
+                            value={newAnnouncement.priority}
+                            onValueChange={(value) => setNewAnnouncement({...newAnnouncement, priority: value})}
+                          >
+                            <SelectTrigger className="text-sm">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="low">Low</SelectItem>
+                              <SelectItem value="normal">Normal</SelectItem>
+                              <SelectItem value="high">High</SelectItem>
+                              <SelectItem value="urgent">Urgent</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
                       <Button onClick={createAnnouncement} className="w-full text-sm">
+                        <Plus className="h-4 w-4 mr-2" />
                         Create Announcement
                       </Button>
                     </div>
@@ -994,7 +1350,8 @@ const TeacherCommunication = ({ teacherData }) => {
                 </Dialog>
               </div>
 
-              <div className="mb-4 flex-shrink-0">
+              {/* Course Filter */}
+              <div className="flex-shrink-0">
                 <Select value={selectedCourse} onValueChange={setSelectedCourse}>
                   <SelectTrigger className="w-full sm:w-[300px]">
                     <SelectValue placeholder="Filter by course" />
@@ -1009,13 +1366,14 @@ const TeacherCommunication = ({ teacherData }) => {
                 </Select>
               </div>
 
-              <div className="flex-1 overflow-y-auto">
+              {/* Announcements List */}
+              <div className="flex-1 overflow-y-auto min-h-0">
                 {!selectedCourse ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center py-12">
-                      <Megaphone className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                      <Megaphone className="h-16 w-16 text-muted-foreground mx-auto mb-4 opacity-50" />
                       <h3 className="text-lg font-semibold mb-2">Select a Course</h3>
-                      <p className="text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         Choose a course to view and manage its announcements
                       </p>
                     </div>
@@ -1023,7 +1381,7 @@ const TeacherCommunication = ({ teacherData }) => {
                 ) : announcements.length === 0 ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center py-12">
-                      <Megaphone className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                      <Megaphone className="h-16 w-16 text-muted-foreground mx-auto mb-4 opacity-50" />
                       <p className="text-foreground/70 text-lg mb-2">No announcements yet</p>
                       <p className="text-sm text-muted-foreground mb-4">
                         Create your first announcement for this course
@@ -1033,11 +1391,11 @@ const TeacherCommunication = ({ teacherData }) => {
                 ) : (
                   <div className="space-y-3">
                     {announcements.map((announcement) => (
-                      <Card key={announcement.id} className="overflow-hidden">
+                      <Card key={announcement.id} className="overflow-hidden hover:shadow-md transition-shadow">
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                            <div className="flex-1 space-y-3">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <Badge 
                                   variant={
                                     announcement.priority === 'urgent' ? 'destructive' : 
@@ -1048,7 +1406,7 @@ const TeacherCommunication = ({ teacherData }) => {
                                 >
                                   {announcement.priority}
                                 </Badge>
-                                <Badge variant="secondary" className="text-xs">
+                                <Badge variant="secondary" className="text-xs capitalize">
                                   {announcement.announcement_type}
                                 </Badge>
                                 {announcement.is_active ? (
@@ -1063,15 +1421,18 @@ const TeacherCommunication = ({ teacherData }) => {
                                 )}
                               </div>
                               
-                              <h3 className="font-semibold text-lg mb-2">{announcement.title}</h3>
-                              <p className="text-sm text-muted-foreground mb-3 whitespace-pre-wrap">
-                                {announcement.content}
-                              </p>
+                              <div>
+                                <h3 className="font-semibold text-base sm:text-lg mb-2">{announcement.title}</h3>
+                                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                                  {announcement.content}
+                                </p>
+                              </div>
                               
-                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <span>
-                                  Created: {new Date(announcement.created_at).toLocaleDateString()} at{' '}
-                                  {new Date(announcement.created_at).toLocaleTimeString()}
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t border-border">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {new Date(announcement.created_at).toLocaleDateString()} at{' '}
+                                  {new Date(announcement.created_at).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
                                 </span>
                                 {announcement.courses && (
                                   <span className="flex items-center gap-1">
@@ -1082,47 +1443,37 @@ const TeacherCommunication = ({ teacherData }) => {
                               </div>
                             </div>
                             
-                            <div className="flex flex-col gap-2">
-                              <Dialog>
-                                <DialogTrigger asChild>
-                                  <Button size="sm" variant="destructive">
-                                    <Trash2 className="h-4 w-4" />
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="ghost" className="flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Delete Announcement</DialogTitle>
+                                </DialogHeader>
+                                <Alert variant="destructive">
+                                  <AlertTriangle className="h-4 w-4" />
+                                  <AlertDescription>
+                                    Are you sure you want to delete "{announcement.title}"? 
+                                    This action cannot be undone and students will no longer be able to see it.
+                                  </AlertDescription>
+                                </Alert>
+                                <div className="flex gap-3 justify-end">
+                                  <DialogTrigger asChild>
+                                    <Button variant="outline">Cancel</Button>
+                                  </DialogTrigger>
+                                  <Button 
+                                    variant="destructive" 
+                                    onClick={() => deleteAnnouncement(announcement.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
                                   </Button>
-                                </DialogTrigger>
-                                <DialogContent>
-                                  <DialogHeader>
-                                    <DialogTitle>Delete Announcement</DialogTitle>
-                                  </DialogHeader>
-                                  <div className="space-y-4">
-                                    <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-                                      <div className="flex items-start gap-3">
-                                        <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
-                                        <div>
-                                          <p className="font-medium text-sm mb-1">Are you sure?</p>
-                                          <p className="text-sm text-muted-foreground">
-                                            This will permanently delete the announcement "{announcement.title}". 
-                                            Students will no longer be able to see it.
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                    
-                                    <div className="flex gap-3 justify-end">
-                                      <DialogTrigger asChild>
-                                        <Button variant="outline">Cancel</Button>
-                                      </DialogTrigger>
-                                      <Button 
-                                        variant="destructive" 
-                                        onClick={() => deleteAnnouncement(announcement.id)}
-                                      >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Delete Announcement
-                                      </Button>
-                                    </div>
-                                  </div>
-                                </DialogContent>
-                              </Dialog>
-                            </div>
+                                </div>
+                              </DialogContent>
+                            </Dialog>
                           </div>
                         </CardContent>
                       </Card>
@@ -1153,16 +1504,18 @@ const TeacherCommunication = ({ teacherData }) => {
             </div>
             <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
               {filteredContacts.length === 0 ? (
-                <p className="text-center text-muted-foreground py-8 text-sm">No contacts found</p>
+                <p className="text-center text-muted-foreground py-8 text-sm">
+                  {contactSearchQuery ? 'No contacts found' : 'No contacts available'}
+                </p>
               ) : (
                 filteredContacts.map(contact => (
                   <div
                     key={contact.id}
-                    className="p-3 hover:bg-accent rounded-sm cursor-pointer transition-all"
+                    className="p-3 hover:bg-accent rounded-lg cursor-pointer transition-all"
                     onClick={() => createDirectChannel(contact.id)}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-primary/10 border border-border rounded-sm flex items-center justify-center text-foreground font-semibold flex-shrink-0">
+                      <div className="w-10 h-10 bg-primary/10 border border-border rounded-full flex items-center justify-center text-foreground font-semibold flex-shrink-0">
                         {getInitials(contact.first_name, contact.last_name)}
                       </div>
                       <div className="flex-1 min-w-0">

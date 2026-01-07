@@ -36,8 +36,9 @@ const Furlong = () => {
   
   const chatEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
-  const chatChannelRef = useRef<RealtimeChannel | null>(null);
-  const activitiesChannelRef = useRef<RealtimeChannel | null>(null);
+  const chatChannelRef = useRef(null);
+  const activitiesChannelRef = useRef(null);
+  const selectedActivityIdRef = useRef(null); // 🔥 KEY FIX: Track selected activity reliably
   const { toast } = useToast();
 
   const [newActivity, setNewActivity] = useState({
@@ -85,6 +86,12 @@ const Furlong = () => {
       }
     };
   }, [studentData, userLocation, filterType, locationEnabled]);
+
+  // 🔥 KEY FIX: Update ref whenever selectedActivity changes
+  useEffect(() => {
+    selectedActivityIdRef.current = selectedActivity?.id || null;
+    console.log('📌 Selected activity ref updated:', selectedActivityIdRef.current);
+  }, [selectedActivity?.id]);
 
   useEffect(() => {
     if (currentView === 'chat' && selectedActivity) {
@@ -197,7 +204,8 @@ const Furlong = () => {
       )
     );
 
-    if (selectedActivity?.id === updatedActivity.id) {
+    // 🔥 Use ref for comparison
+    if (selectedActivityIdRef.current === updatedActivity.id) {
       setSelectedActivity(prev => ({ ...prev, ...updatedActivity }));
     }
   };
@@ -205,7 +213,8 @@ const Furlong = () => {
   const handleActivityDelete = (deletedActivity) => {
     setActivities(prev => prev.filter(activity => activity.id !== deletedActivity.id));
     
-    if (selectedActivity?.id === deletedActivity.id) {
+    // 🔥 Use ref for comparison
+    if (selectedActivityIdRef.current === deletedActivity.id) {
       setSelectedActivity(null);
       setMyAnonymousName(null);
       setChatMessages([]);
@@ -221,7 +230,7 @@ const Furlong = () => {
   const subscribeToChat = async () => {
     if (!selectedActivity) return;
 
-    console.log('💬 Setting up chat realtime subscription');
+    console.log('💬 Setting up chat realtime subscription for activity:', selectedActivity.id);
 
     const channelName = `furlong-chat-${selectedActivity.id}-${Date.now()}`;
     chatChannelRef.current = supabase
@@ -229,42 +238,58 @@ const Furlong = () => {
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
-        table: 'furlong_chat_messages'
+        table: 'furlong_chat_messages',
+        filter: `activity_id=eq.${selectedActivity.id}` // 🔥 Filter at database level
       }, (payload) => {
-        console.log('📨 New message:', payload.new);
+        console.log('📨 New message received:', {
+          id: payload.new.id,
+          activity_id: payload.new.activity_id,
+          current_activity: selectedActivityIdRef.current,
+          sender_id: payload.new.sender_id,
+          current_user: studentData?.id
+        });
         
-        // Only add if it belongs to current activity
-        if (payload.new.activity_id === selectedActivity.id) {
-          setChatMessages(prev => {
-            if (prev.some(msg => msg.id === payload.new.id)) return prev;
-            return [...prev, payload.new];
-          });
-        }
+        // Since we're filtering at DB level, all messages here are for current activity
+        console.log('✅ Message is for current activity, adding to chat');
+        setChatMessages(prev => {
+          if (prev.some(msg => msg.id === payload.new.id)) {
+            console.log('⚠️ Duplicate message detected, skipping');
+            return prev;
+          }
+          console.log('✅ Adding new message to chat');
+          return [...prev, payload.new];
+        });
+        
+        // Scroll to bottom
+        setTimeout(scrollToBottom, 150);
       })
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
-        table: 'furlong_chat_messages'
+        table: 'furlong_chat_messages',
+        filter: `activity_id=eq.${selectedActivity.id}` // 🔥 Filter at database level
       }, (payload) => {
-        if (payload.new.activity_id === selectedActivity.id) {
-          console.log('📝 Message updated:', payload.new);
-          setChatMessages(prev =>
-            prev.map(msg => msg.id === payload.new.id ? payload.new : msg)
-          );
-        }
+        console.log('📝 Message updated:', payload.new);
+        setChatMessages(prev =>
+          prev.map(msg => msg.id === payload.new.id ? payload.new : msg)
+        );
       })
       .on('postgres_changes', {
         event: 'DELETE',
         schema: 'public',
-        table: 'furlong_chat_messages'
+        table: 'furlong_chat_messages',
+        filter: `activity_id=eq.${selectedActivity.id}` // 🔥 Filter at database level
       }, (payload) => {
-        if (payload.old.activity_id === selectedActivity.id) {
-          console.log('🗑️ Message deleted:', payload.old);
-          setChatMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
-        }
+        console.log('🗑️ Message deleted:', payload.old);
+        setChatMessages(prev => prev.filter(msg => msg.id !== payload.old.id));
       })
       .subscribe((status) => {
         console.log('💬 Chat subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Successfully subscribed to chat messages');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Chat subscription error');
+        }
       });
   };
 
@@ -463,6 +488,7 @@ const Furlong = () => {
         .order('created_at', { ascending: true });
       if (error) throw error;
       setChatMessages(messages || []);
+      console.log(`✅ Loaded ${messages?.length || 0} messages for activity ${selectedActivity.id}`);
       scrollToBottom();
     } catch (error) {
       console.error('❌ Error loading messages:', error);
@@ -649,7 +675,13 @@ const Furlong = () => {
     if (!messageInput.trim() || !myAnonymousName) return;
     
     const messageText = messageInput.trim();
-    const tempId = `temp-${Date.now()}`;
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
+    
+    console.log('📤 Sending message:', {
+      tempId,
+      activity_id: selectedActivity.id,
+      text: messageText.substring(0, 30)
+    });
     
     // Optimistic UI update
     const optimisticMessage = {
@@ -691,7 +723,7 @@ const Furlong = () => {
         )
       );
 
-      console.log('✅ Message sent successfully');
+      console.log('✅ Message sent successfully:', data.id);
     } catch (error) {
       console.error('❌ Error sending message:', error);
       setChatMessages(prev => prev.filter(msg => msg.tempId !== tempId));
@@ -905,27 +937,6 @@ const Furlong = () => {
   // RENDER VIEWS
   const renderDiscover = () => (
     <div className="space-y-3">
-      {/* {!locationEnabled && (
-        <Alert className="border-yellow-500/50 bg-yellow-500/10">
-          <MapPinned className="h-4 w-4 text-yellow-600" />
-          <AlertDescription className="flex items-center justify-between">
-            <span className="text-yellow-700">Enable location to discover nearby activities</span>
-            <Button 
-              size="sm" 
-              onClick={requestLocation} 
-              disabled={locationLoading}
-              className="ml-2"
-            >
-              {locationLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                'Enable Location'
-              )}
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )} */}
-
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-foreground">Discover Activities</h2>

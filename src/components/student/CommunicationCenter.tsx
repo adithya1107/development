@@ -39,9 +39,10 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
   const textareaRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
-  const messageChannelRef = useRef<RealtimeChannel | null>(null);
-  const typingChannelRef = useRef<RealtimeChannel | null>(null);
-  const presenceChannelRef = useRef<RealtimeChannel | null>(null);
+  const messageChannelRef = useRef(null);
+  const typingChannelRef = useRef(null);
+  const presenceChannelRef = useRef(null);
+  const currentChannelIdRef = useRef(null); // 🔥 KEY FIX: Track current channel reliably
   const { toast } = useToast();
 
   // Helper function to get proper channel display name
@@ -96,6 +97,12 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
       }
     }
   }, [initialChannelId, channels]);
+
+  // 🔥 KEY FIX: Update ref whenever selectedChannel changes
+  useEffect(() => {
+    currentChannelIdRef.current = selectedChannel?.id || null;
+    console.log('📌 Current channel ref updated:', currentChannelIdRef.current);
+  }, [selectedChannel?.id]);
 
   // Mark messages as read when viewing
   useEffect(() => {
@@ -342,23 +349,9 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
       channel: newMessageData.channel_id,
       sender: newMessageData.sender_id,
       current_user: studentData.user_id,
+      current_channel: currentChannelIdRef.current, // 🔥 Using ref instead of state
       text: newMessageData.message_text?.substring(0, 30)
     });
-
-    // Check if this message belongs to any of our channels
-    const belongsToMyChannel = channels.some(ch => ch.id === newMessageData.channel_id);
-    
-    if (!belongsToMyChannel) {
-      console.log('⏭️ Message not for our channels, refreshing channel list');
-      await fetchChannels();
-      
-      // Check again after refresh
-      const updatedBelongs = channels.some(ch => ch.id === newMessageData.channel_id);
-      if (!updatedBelongs) {
-        console.log('⏭️ Still not our channel after refresh, ignoring');
-        return;
-      }
-    }
 
     // Fetch complete message with sender info
     try {
@@ -392,15 +385,18 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
         sender: `${completeMessage.sender.first_name} ${completeMessage.sender.last_name}`,
         sender_id: completeMessage.sender_id,
         current_user: studentData.user_id,
-        is_mine: completeMessage.sender_id === studentData.user_id
+        is_mine: completeMessage.sender_id === studentData.user_id,
+        viewing_channel: currentChannelIdRef.current,
+        message_channel: newMessageData.channel_id,
+        is_for_current_channel: currentChannelIdRef.current === newMessageData.channel_id
       });
 
       // Update channels list to reflect new message
-      fetchChannels();
+      await fetchChannels();
       
-      // Add message to current channel view if applicable
-      if (selectedChannel && newMessageData.channel_id === selectedChannel.id) {
-        console.log('✅ Adding message to current channel:', selectedChannel.channel_name);
+      // 🔥 KEY FIX: Use ref to check if message is for current channel
+      if (currentChannelIdRef.current === newMessageData.channel_id) {
+        console.log('✅ Message is for currently viewed channel, adding to messages');
         
         setMessages(prev => {
           // Check for duplicates by ID
@@ -421,24 +417,21 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
         
         // Mark as read if viewing and focused
         if (document.hasFocus() && newMessageData.sender_id !== studentData.user_id) {
-          setTimeout(() => markChannelAsRead(selectedChannel.id), 100);
+          setTimeout(() => markChannelAsRead(newMessageData.channel_id), 100);
         }
         
         // Scroll to bottom
         setTimeout(scrollToBottom, 150);
       } else {
-        // Show notification for messages in other channels
+        // Show notification for messages in other channels (but not our own messages)
         if (newMessageData.sender_id !== studentData.user_id) {
-          const channel = channels.find(c => c.id === newMessageData.channel_id);
-          if (channel) {
-            console.log('🔔 Showing notification for message in other channel');
-            
-            toast({
-              title: getChannelDisplayName(channel, studentData.user_id),
-              description: completeMessage.message_text.substring(0, 50) + '...',
-              duration: 4000,
-            });
-          }
+          console.log('🔔 Message in different channel, showing notification');
+          
+          toast({
+            title: `${completeMessage.sender.first_name} ${completeMessage.sender.last_name}`,
+            description: completeMessage.message_text.substring(0, 50) + '...',
+            duration: 4000,
+          });
         }
       }
     } catch (error) {
@@ -451,7 +444,8 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
     
     console.log('📝 Processing message update:', updatedMessage.id);
     
-    if (selectedChannel && updatedMessage.channel_id === selectedChannel.id) {
+    // 🔥 Use ref here too for consistency
+    if (currentChannelIdRef.current === updatedMessage.channel_id) {
       const { data } = await supabase
         .from('messages')
         .select(`
@@ -481,7 +475,7 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
     
     if (user_id === studentData.user_id) return;
     
-    console.log('⌨️ Typing indicator:', { user_name, is_typing });
+    console.log('⌨️ Typing indicator:', { channel_id, user_name, is_typing });
     
     setTypingUsers(prev => {
       const newState = { ...prev };
@@ -492,6 +486,7 @@ const CommunicationHub = ({ studentData, initialChannelId }) => {
       if (is_typing) {
         newState[channel_id][user_id] = user_name;
         
+        // Auto-clear typing indicator after 5 seconds
         setTimeout(() => {
           setTypingUsers(current => {
             const updated = { ...current };
