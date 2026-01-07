@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import QRCode from 'qrcode';
+import { getCurrentLocation } from '@/lib/locationUtils';
 import { 
   Calendar, 
   MapPin, 
@@ -391,132 +392,163 @@ const [loadingHistory, setLoadingHistory] = useState(false);
   };
 
   const generateQRCode = async (classData: any) => {
+  try {
+    if (!teacherCourseIds.includes(classData.course_id)) {
+      toast.error('You are not authorized to generate QR code for this course');
+      return;
+    }
+
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5);
+    
+    if (currentTime < classData.start_time) {
+      toast.error('Cannot generate QR code before class starts');
+      return;
+    }
+
+    if (currentTime > classData.end_time) {
+      toast.error('Class has already ended. Cannot generate QR code');
+      return;
+    }
+
+    // Get teacher's location
+    let teacherLocation: { latitude: number; longitude: number } | null = null;
+    
     try {
-      if (!teacherCourseIds.includes(classData.course_id)) {
-        toast.error('You are not authorized to generate QR code for this course');
-        return;
-      }
+      const location = await getCurrentLocation();
+      teacherLocation = location;
+      toast.success('📍 Location captured for attendance verification');
+    } catch (locationError: any) {
+      toast.error(locationError.message || 'Failed to get location. Attendance will work without location verification.');
+      console.error('Location error:', locationError);
+      // Continue without location - you can make this required by adding 'return;' here
+    }
 
-      const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 5);
+    const today = new Date().toISOString().split('T')[0];
+    const sessionDate = classData.scheduled_date || today;
+
+    const { data: existingSession } = await supabase
+      .from('attendance_sessions')
+      .select('id, qr_code, is_active')
+      .eq('course_id', classData.course_id)
+      .eq('session_date', sessionDate)
+      .eq('start_time', classData.start_time)
+      .eq('instructor_id', teacherData.user_id)
+      .single();
+
+    let session;
+    let qrCodeData;
+
+    if (existingSession) {
+      session = existingSession;
+      qrCodeData = existingSession.qr_code;
       
-      if (currentTime < classData.start_time) {
-        toast.error('Cannot generate QR code before class starts');
-        return;
+      // Update session with location if captured
+      const updateData: any = { is_active: true };
+      if (teacherLocation) {
+        updateData.teacher_latitude = teacherLocation.latitude;
+        updateData.teacher_longitude = teacherLocation.longitude;
       }
-
-      if (currentTime > classData.end_time) {
-        toast.error('Class has already ended. Cannot generate QR code');
-        return;
-      }
-
-      const today = new Date().toISOString().split('T')[0];
-      const sessionDate = classData.scheduled_date || today;
-
-      const { data: existingSession } = await supabase
+      
+      await supabase
         .from('attendance_sessions')
-        .select('id, qr_code, is_active')
-        .eq('course_id', classData.course_id)
-        .eq('session_date', sessionDate)
-        .eq('start_time', classData.start_time)
-        .eq('instructor_id', teacherData.user_id)
+        .update(updateData)
+        .eq('id', existingSession.id);
+      
+      toast.info('Reopening existing session with updated location');
+    } else {
+      let sessionCode;
+      let isUnique = false;
+      
+      while (!isUnique) {
+        sessionCode = generateSessionCode();
+        
+        const { data: existingCode } = await supabase
+          .from('attendance_sessions')
+          .select('id')
+          .eq('qr_code', sessionCode)
+          .eq('session_date', sessionDate)
+          .single();
+        
+        if (!existingCode) {
+          isUnique = true;
+        }
+      }
+
+      const sessionData: any = {
+        course_id: classData.course_id,
+        instructor_id: teacherData.user_id,
+        session_date: sessionDate,
+        start_time: classData.start_time,
+        end_time: classData.end_time,
+        session_type: classData.is_extra_class ? classData.class_type : 'lecture',
+        topic: classData.title || classData.courses?.course_name,
+        qr_code: sessionCode,
+        is_active: true,
+        room_location: classData.room_location
+      };
+
+      // Add location if captured
+      if (teacherLocation) {
+        sessionData.teacher_latitude = teacherLocation.latitude;
+        sessionData.teacher_longitude = teacherLocation.longitude;
+      }
+
+      const { data: newSession, error: sessionError } = await supabase
+        .from('attendance_sessions')
+        .insert(sessionData)
+        .select()
         .single();
 
-      let session;
-      let qrCodeData;
+      if (sessionError) throw sessionError;
 
-      if (existingSession) {
-        session = existingSession;
-        qrCodeData = existingSession.qr_code;
-        
-        await supabase
-          .from('attendance_sessions')
-          .update({ is_active: true })
-          .eq('id', existingSession.id);
-        
-        toast.info('Reopening existing session');
-      } else {
-        let sessionCode;
-        let isUnique = false;
-        
-        while (!isUnique) {
-          sessionCode = generateSessionCode();
-          
-          const { data: existingCode } = await supabase
-            .from('attendance_sessions')
-            .select('id')
-            .eq('qr_code', sessionCode)
-            .eq('session_date', sessionDate)
-            .single();
-          
-          if (!existingCode) {
-            isUnique = true;
-          }
-        }
-
-        const sessionData = {
-          course_id: classData.course_id,
-          instructor_id: teacherData.user_id,
-          session_date: sessionDate,
-          start_time: classData.start_time,
-          end_time: classData.end_time,
-          session_type: classData.is_extra_class ? classData.class_type : 'lecture',
-          topic: classData.title || classData.courses?.course_name,
-          qr_code: sessionCode,
-          is_active: true,
-          room_location: classData.room_location
-        };
-
-        const { data: newSession, error: sessionError } = await supabase
-          .from('attendance_sessions')
-          .insert(sessionData)
-          .select()
-          .single();
-
-        if (sessionError) throw sessionError;
-
-        qrCodeData = sessionCode;
-        session = newSession;
-        toast.success('QR Code generated! Session is now active.');
-      }
-
-      setSelectedClass(classData);
-      setCurrentSessionId(session.id);
-
-      const qrDataUrl = await QRCode.toDataURL(qrCodeData, {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#3b82f6',
-          light: '#ffffff',
-        },
-      });
-
-      setQrCode(qrDataUrl);
-      setSessionId(qrCodeData);
-      setIsQRDialogOpen(true);
-      setAttendanceRecords([]);
-      setCourseAttendanceStats([]);
-      checkTimeValidity(classData);
+      qrCodeData = sessionCode;
+      session = newSession;
       
-      setTimeout(() => fetchAttendanceForSession(), 500);
-
-      const endTimeParts = classData.end_time.split(':');
-      const endDate = new Date();
-      endDate.setHours(parseInt(endTimeParts[0]), parseInt(endTimeParts[1]), 0, 0);
-      const remainingMs = endDate.getTime() - now.getTime();
-
-      if (remainingMs > 0) {
-        setTimeout(async () => {
-          await closeSession(session.id, classData.course_id, sessionDate);
-        }, remainingMs);
+      if (teacherLocation) {
+        toast.success('✅ QR Code generated with location verification!');
+      } else {
+        toast.success('QR Code generated! (Location verification unavailable)');
       }
-
-    } catch (error: any) {
-      console.error('Error generating QR code:', error);
-      toast.error(error.message || 'Failed to generate QR code');
     }
-  };
+
+    setSelectedClass(classData);
+    setCurrentSessionId(session.id);
+
+    const qrDataUrl = await QRCode.toDataURL(qrCodeData, {
+      width: 300,
+      margin: 2,
+      color: {
+        dark: '#3b82f6',
+        light: '#ffffff',
+      },
+    });
+
+    setQrCode(qrDataUrl);
+    setSessionId(qrCodeData);
+    setIsQRDialogOpen(true);
+    setAttendanceRecords([]);
+    setCourseAttendanceStats([]);
+    checkTimeValidity(classData);
+    
+    setTimeout(() => fetchAttendanceForSession(), 500);
+
+    const endTimeParts = classData.end_time.split(':');
+    const endDate = new Date();
+    endDate.setHours(parseInt(endTimeParts[0]), parseInt(endTimeParts[1]), 0, 0);
+    const remainingMs = endDate.getTime() - now.getTime();
+
+    if (remainingMs > 0) {
+      setTimeout(async () => {
+        await closeSession(session.id, classData.course_id, sessionDate);
+      }, remainingMs);
+    }
+
+  } catch (error: any) {
+    console.error('Error generating QR code:', error);
+    toast.error(error.message || 'Failed to generate QR code');
+  }
+};
 
   const closeSession = async (sessionId: string, courseId: string, sessionDate: string) => {
     try {
@@ -926,15 +958,70 @@ const fetchAttendanceForHistorySession = async (sessionId: string, courseId: str
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  const getClassesForDay = (dayOfWeek: number, specificDate?: Date) => {
-    return schedule.filter(cls => {
-      if (cls.is_extra_class && cls.scheduled_date && specificDate) {
-        const classDate = new Date(cls.scheduled_date);
-        return classDate.toDateString() === specificDate.toDateString();
+const formatTimeShort = (timeString: string) => {
+  if (!timeString) return '';
+  const [hours, minutes] = timeString.split(':');
+  const hour = parseInt(hours);
+  const ampm = hour >= 12 ? 'PM' : 'AM';  
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minutes}${ampm}`;
+};
+
+const getClassesForDay = (dayOfWeek: number, specificDate?: Date) => {
+  return schedule.filter(cls => {
+    if (cls.is_extra_class && cls.scheduled_date && specificDate) {
+      const classDate = new Date(cls.scheduled_date);
+      return classDate.toDateString() === specificDate.toDateString();
+    }
+    return cls.day_of_week === dayOfWeek;
+  });
+};
+
+const detectOverlaps = (classes: any[]) => {
+  const sortedClasses = [...classes].sort((a, b) => 
+    timeToMinutes(a.start_time) - timeToMinutes(b.start_time)
+  );
+
+  const overlaps = [];  
+  for (let i = 0; i < sortedClasses.length; i++) {
+    const current = sortedClasses[i];
+    const currentStart = timeToMinutes(current.start_time);
+    const currentEnd = timeToMinutes(current.end_time);
+    
+    let overlapGroup = [current];
+    
+    for (let j = i + 1; j < sortedClasses.length; j++) {
+      const next = sortedClasses[j];
+      const nextStart = timeToMinutes(next.start_time);
+      
+      if (nextStart < currentEnd) {
+        overlapGroup.push(next);
       }
-      return cls.day_of_week === dayOfWeek;
+    }
+    
+    if (overlapGroup.length > 1) {
+      overlaps.push(overlapGroup);
+    }
+  }
+  
+  return overlaps;
+};  
+
+const calculateOverlapPositions = (classes: any[]) => {
+  const positions = new Map();
+  const overlaps = detectOverlaps(classes);
+  
+  overlaps.forEach(group => {
+    group.forEach((cls, index) => {
+      positions.set(cls, {
+        totalInGroup: group.length,
+        position: index
+      });
     });
-  };
+  });
+  
+  return positions;
+};
 
   const getClassTypeStyle = (cls: any) => {
     if (!cls.is_extra_class) {
@@ -977,22 +1064,23 @@ const fetchAttendanceForHistorySession = async (sessionId: string, courseId: str
   };
 
   const getClassPosition = (startTime: string, endTime: string) => {
-    const dayStartMinutes = 0 * 60;
-    const dayEndMinutes = 24 * 60;
-    const totalMinutes = dayEndMinutes - dayStartMinutes;
-    
-    const startMinutes = timeToMinutes(startTime);
-    const endMinutes = timeToMinutes(endTime);
-    const duration = endMinutes - startMinutes;
-    
-    const topPercent = ((startMinutes - dayStartMinutes) / totalMinutes) * 100;
-    const heightPercent = (duration / totalMinutes) * 100;
-    
-    return {
-      top: `${Math.max(0, topPercent)}%`,
-      height: `${Math.max(3, heightPercent)}%`
-    };
+  const dayStartMinutes = 0 * 60;
+  const dayEndMinutes = 24 * 60;
+  const totalMinutes = dayEndMinutes - dayStartMinutes;
+  
+  const startMinutes = timeToMinutes(startTime);
+  const endMinutes = timeToMinutes(endTime);
+  const duration = endMinutes - startMinutes;
+  
+  const topPercent = ((startMinutes - dayStartMinutes) / totalMinutes) * 100;
+  const heightPercent = (duration / totalMinutes) * 100;
+  
+  return {
+    top: `${Math.max(0, topPercent)}%`,
+    height: `${Math.max(3, heightPercent)}%`,
+    durationMinutes: duration  // ← ADD THIS LINE
   };
+};
 
   const generateTimeLabels = () => {
     const labels = [];
@@ -1114,7 +1202,8 @@ const fetchAttendanceForHistorySession = async (sessionId: string, courseId: str
               : 'translate(-50%, calc(-100% - 10px))',
             pointerEvents: 'none',
             willChange: 'transform',
-            isolation: 'isolate'
+            isolation: 'isolate',
+            
           }}
           onMouseEnter={() => {
             isHoveringRef.current = true;
@@ -1437,7 +1526,7 @@ const fetchAttendanceForHistorySession = async (sessionId: string, courseId: str
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="overflow-visible">
+            <CardContent className="overflow-hidden">
               {hasNoCourses ? (
                 <div className="text-center py-12 text-muted-foreground">
                   <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -1466,8 +1555,12 @@ const fetchAttendanceForHistorySession = async (sessionId: string, courseId: str
                       </div>
                     </div>
 
-                    {getWeekDays(currentWeek).map((date, dayIndex) => (
-                      <div key={dayIndex} className="space-y-2">
+                    {getWeekDays(currentWeek).map((date, dayIndex) => {
+                      const dayClasses = getClassesForDay(dayIndex, date);
+                      const overlapPositions = calculateOverlapPositions(dayClasses); 
+                      
+                      return (
+                        <div key={dayIndex} className="space-y-2">
                         <div className={`h-12 text-center p-2 rounded-lg ${
                           isToday(date) ? 'bg-primary text-primary-foreground' : 'bg-muted'
                         }`}>
@@ -1475,7 +1568,7 @@ const fetchAttendanceForHistorySession = async (sessionId: string, courseId: str
                           <div className="text-xs">{date.getDate()}</div>
                         </div>
                         
-                        <div className="relative border rounded-lg overflow-visible" style={{ height: 'calc(100% - 56px)', minHeight: '700px' }}>
+                        <div className="relative border rounded-lg overflow-hidden" style={{ height: 'calc(100% - 56px)', minHeight: '700px' }}>
                           {generateTimeLabels().map((_, index) => (
                             <div 
                               key={index}
@@ -1484,16 +1577,37 @@ const fetchAttendanceForHistorySession = async (sessionId: string, courseId: str
                             />
                           ))}
                           
-                          {getClassesForDay(dayIndex, date).map((cls, clsIndex) => {
+                          {dayClasses.map((cls, clsIndex) => {
                             const position = getClassPosition(cls.start_time, cls.end_time);
                             const active = isClassActive(cls);
+                            const overlapInfo = overlapPositions.get(cls);  // ← GET OVERLAP INFO
+                            
+                            // Calculate width and left offset for overlapping classes
+                            let widthPercent = 100;
+                            let leftPercent = 0;
+                            
+                            if (overlapInfo) {
+                              widthPercent = 100 / overlapInfo.totalInGroup;
+                              leftPercent = widthPercent * overlapInfo.position;
+                            }
+                            
+                            // Determine if class is too small to show details
+                            const isSmallSlot = position.durationMinutes < 45;
+                            const isVerySmallSlot = position.durationMinutes < 30;
+                            
                             return (
                               <div 
                                 key={clsIndex}
-                                className={`absolute left-1 right-1 p-2 rounded text-xs border cursor-pointer transition-colors duration-150 ${getClassTypeStyle(cls)} ${
+                                className={`absolute p-1.5 rounded text-xs border cursor-pointer transition-colors duration-150 overflow-hidden ${getClassTypeStyle(cls)} ${
                                   active ? 'ring-2 ring-offset-1' : ''
                                 }`}
-                                style={position}
+                                style={{
+                                  top: position.top,
+                                  height: position.height,
+                                  left: `${leftPercent}%`,   
+                                  width: `${widthPercent - 1}%`,  
+                                  minHeight: '28px'
+                                }}
                                 onClick={() => generateQRCode(cls)}
                                 onMouseEnter={(e) => {
                                   e.stopPropagation();
@@ -1504,38 +1618,67 @@ const fetchAttendanceForHistorySession = async (sessionId: string, courseId: str
                                   handleClassLeave();
                                 }}
                               >
-                                <div className="font-medium truncate flex items-center pointer-events-none">
-                                  {cls.is_extra_class && (
-                                    <Star className="h-2 w-2 mr-1 flex-shrink-0" />
-                                  )}
-                                  <span className="truncate">{cls.courses?.course_code}</span>
-                                </div>
-                                <div className="text-xs opacity-80 truncate pointer-events-none">
-                                  {formatTime(cls.start_time)}
-                                </div>
-                                <div className="text-xs opacity-80 truncate pointer-events-none">
-                                  {cls.room_location}
-                                </div>
-                                {cls.is_extra_class && (
-                                  <div className="text-xs opacity-70 truncate capitalize pointer-events-none">
-                                    {cls.class_type}
+                                {isVerySmallSlot ? (
+                                  // Very small slot - only show course code
+                                  <div className="flex items-center justify-center h-full pointer-events-none">
+                                    <div className="font-semibold text-[10px] truncate flex items-center gap-0.5">
+                                      {cls.is_extra_class && (
+                                        <Star className="h-2 w-2 flex-shrink-0" />
+                                      )}
+                                      <span className="truncate">{cls.courses?.course_code}</span>
+                                    </div>
+                                  </div>
+                                ) : isSmallSlot ? (
+                                  // Small slot - show code and time
+                                  <div className="space-y-0.5 pointer-events-none">
+                                    <div className="font-medium text-[10px] truncate flex items-center gap-0.5">
+                                      {cls.is_extra_class && (
+                                        <Star className="h-2 w-2 flex-shrink-0" />
+                                      )}
+                                      <span className="truncate">{cls.courses?.course_code}</span>
+                                    </div>
+                                    <div className="text-[9px] truncate">
+                                      {formatTimeShort(cls.start_time)}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  // Normal slot - show all details
+                                  <div className="space-y-0.5 pointer-events-none">
+                                    <div className="font-medium text-[10px] truncate flex items-center gap-0.5">
+                                      {cls.is_extra_class && (
+                                        <Star className="h-2 w-2 flex-shrink-0" />
+                                      )}
+                                      <span className="truncate">{cls.courses?.course_code}</span>
+                                    </div>
+                                    <div className="text-[9px] truncate">
+                                      {formatTimeShort(cls.start_time)}
+                                    </div>
+                                    {position.durationMinutes >= 60 && (
+                                      <>
+                                        <div className="text-[9px] truncate">
+                                          {cls.room_location || 'TBD'}
+                                        </div>
+                                        {cls.is_extra_class && position.durationMinutes >= 75 && (
+                                          <div className="text-[9px] truncate capitalize">
+                                            {cls.class_type}
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+                                    {active && position.durationMinutes >= 60 && (
+                                      <div className="text-[9px] font-semibold text-green-600 pointer-events-none">
+                                        ACTIVE
+                                      </div>
+                                    )}
                                   </div>
                                 )}
-                                {active && (
-                                  <div className="text-xs font-semibold text-green-600 mt-1 pointer-events-none">
-                                    ACTIVE
-                                  </div>
-                                )}
-                                <div className="text-xs opacity-70 truncate flex items-center mt-1 pointer-events-none">
-                                  <QrCodeIcon className="h-2 w-2 mr-1" />
-                                  Click for QR
-                                </div>
                               </div>
                             );
                           })}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Mobile View - Daily List Format */}

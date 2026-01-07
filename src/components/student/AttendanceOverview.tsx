@@ -12,6 +12,7 @@ import { CheckCircle, XCircle, AlertTriangle, Clock, Hash, Scan, QrCode as QrCod
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import QrScanner from 'qr-scanner';
+import { getCurrentLocation, calculateDistance, isWithinRadius } from '@/lib/locationUtils';
 
 interface AttendanceOverviewProps {
   studentData: any;
@@ -206,6 +207,52 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
         return;
       }
 
+      // Get student's location
+      let studentLocation: { latitude: number; longitude: number } | null = null;
+      let distanceFromTeacher: number | null = null;
+      
+      try {
+        toast.info('📍 Getting your location...');
+        studentLocation = await getCurrentLocation();
+        
+        // Verify location if teacher location is available
+        if (session.teacher_latitude && session.teacher_longitude) {
+          const teacherLocation = {
+            latitude: session.teacher_latitude,
+            longitude: session.teacher_longitude
+          };
+          
+          distanceFromTeacher = calculateDistance(teacherLocation, studentLocation);
+          
+          // Check if within 20 meters (accounting for GPS inaccuracy)
+          const ALLOWED_RADIUS = 20; // meters
+          
+          if (distanceFromTeacher > ALLOWED_RADIUS) {
+            toast.error(
+              `❌ You must be within 15 meters of the teacher. You are ${Math.round(distanceFromTeacher)} meters away.`,
+              { duration: 5000 }
+            );
+            return;
+          }
+          
+          toast.success(`✅ Location verified! Distance: ${Math.round(distanceFromTeacher)}m`, { duration: 3000 });
+        } else {
+          toast.info('ℹ️ Location verification not available for this session');
+        }
+      } catch (locationError: any) {
+        // If teacher set location, require it from student
+        if (session.teacher_latitude && session.teacher_longitude) {
+          toast.error(
+            locationError.message || '❌ Location access is required to mark attendance. Please enable location services.',
+            { duration: 5000 }
+          );
+          return;
+        }
+        // Otherwise, continue without location verification
+        console.warn('Location not available:', locationError);
+        toast.warning('⚠️ Proceeding without location verification');
+      }
+
       // Check if already marked for this session
       const { data: existingAttendance } = await supabase
         .from('attendance')
@@ -253,33 +300,68 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
       const elapsedMinutes = Math.floor(elapsedMs / 60000);
 
       let status = 'present';
-      let statusMessage = '✓ Attendance marked as PRESENT!';
+      let statusMessage = '✅ Attendance marked as PRESENT!';
       
       if (elapsedMinutes > 10) {
         status = 'late';
-        statusMessage = '⚠ Marked as LATE (0.5x credit) - Arrived after 10 minutes';
+        statusMessage = '⚠️ Marked as LATE (0.5x credit) - Arrived after 10 minutes';
       }
 
-      // Insert attendance record
+      // Prepare device info with location data
+      const deviceInfo: any = {
+        timestamp: new Date().toISOString(),
+        minutes_since_start: elapsedMinutes,
+        has_location: !!studentLocation
+      };
+      
+      if (studentLocation && distanceFromTeacher !== null) {
+        deviceInfo.distance_verified = true;
+        deviceInfo.distance_meters = Math.round(distanceFromTeacher);
+        deviceInfo.location_accuracy = 'verified';
+      } else if (studentLocation) {
+        deviceInfo.location_captured = true;
+        deviceInfo.location_accuracy = 'no_teacher_location';
+      } else {
+        deviceInfo.location_accuracy = 'unavailable';
+      }
+
+      // Insert attendance record with location
+      const attendanceData: any = {
+        course_id: session.course_id,
+        student_id: studentData.user_id,
+        class_date: session.session_date,
+        status: status,
+        session_id: session.id,
+        marked_by: studentData.user_id,
+        marked_at: new Date().toISOString(),
+        device_info: deviceInfo
+      };
+
+      // Add location coordinates if available
+      if (studentLocation) {
+        attendanceData.student_latitude = studentLocation.latitude;
+        attendanceData.student_longitude = studentLocation.longitude;
+      }
+      
+      if (distanceFromTeacher !== null) {
+        attendanceData.distance_from_teacher = distanceFromTeacher;
+      }
+
       const { error: attendanceError } = await supabase
         .from('attendance')
-        .insert({
-          course_id: session.course_id,
-          student_id: studentData.user_id,
-          class_date: session.session_date,
-          status: status,
-          session_id: session.id,
-          marked_by: studentData.user_id,
-          marked_at: new Date().toISOString(),
-          device_info: {
-            timestamp: new Date().toISOString(),
-            minutes_since_start: elapsedMinutes
-          }
-        });
+        .insert(attendanceData);
 
       if (attendanceError) throw attendanceError;
 
-      toast.success(statusMessage);
+      // Show success message with location info
+      if (distanceFromTeacher !== null) {
+        toast.success(
+          `${statusMessage}\n📍 Distance: ${Math.round(distanceFromTeacher)}m from teacher`,
+          { duration: 4000 }
+        );
+      } else {
+        toast.success(statusMessage, { duration: 4000 });
+      }
       
       setSessionCode('');
       setScanDialogOpen(false);
