@@ -57,6 +57,7 @@ const TeacherSchedule = ({ teacherData }: TeacherScheduleProps) => {
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number; showBelow?: boolean } | null>(null);
   const hoverTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const isHoveringRef = React.useRef<boolean>(false);
+  const [failedAttempts, setFailedAttempts] = useState<any[]>([]);
 
 const [pastSessions, setPastSessions] = useState<any[]>([]);
 const [selectedHistorySession, setSelectedHistorySession] = useState<any>(null);
@@ -82,7 +83,11 @@ const [loadingHistory, setLoadingHistory] = useState(false);
     let interval: NodeJS.Timeout;
     if (isQRDialogOpen && currentSessionId) {
       fetchAttendanceForSession();
-      interval = setInterval(fetchAttendanceForSession, 3000);
+      fetchFailedAttempts();
+      interval = setInterval(() => {
+      fetchAttendanceForSession();
+      fetchFailedAttempts(); 
+    }, 3000);
     }
     return () => {
       if (interval) clearInterval(interval);
@@ -119,6 +124,95 @@ const [loadingHistory, setLoadingHistory] = useState(false);
     }
     return code;
   };
+
+  const approveFailedAttempt = async (attempt: any) => {
+  try {
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5);
+    const classStartTime = selectedClass.start_time;
+
+    // Calculate status
+    const [startHour, startMin] = classStartTime.split(':').map(Number);
+    const startDate = new Date();
+    startDate.setHours(startHour, startMin, 0, 0);
+    
+    const attemptTime = new Date(attempt.attempted_at);
+    const elapsedMs = attemptTime.getTime() - startDate.getTime();
+    const elapsedMinutes = Math.floor(elapsedMs / 60000);
+
+    let status = 'present';
+    if (elapsedMinutes > 10) {
+      status = 'late';
+    }
+
+    // Create attendance record
+    const attendanceData = {
+      course_id: attempt.course_id,
+      student_id: attempt.student_id,
+      class_date: selectedClass.scheduled_date || new Date().toISOString().split('T')[0],
+      status: status,
+      session_id: attempt.session_id,
+      marked_by: teacherData.user_id,
+      marked_at: new Date().toISOString(),
+      device_info: {
+        approved_from_failed_attempt: true,
+        original_attempt_time: attempt.attempted_at,
+        failure_reason: attempt.failure_reason,
+        distance_meters: attempt.distance_from_teacher,
+        gps_accuracy: attempt.gps_accuracy
+      },
+      student_latitude: attempt.student_latitude,
+      student_longitude: attempt.student_longitude,
+      distance_from_teacher: attempt.distance_from_teacher
+    };
+
+    const { error: attendanceError } = await supabase
+      .from('attendance')
+      .insert(attendanceData);
+
+    if (attendanceError) throw attendanceError;
+
+    // Update attempt status
+    const { error: updateError } = await supabase
+      .from('attendance_attempts')
+      .update({
+        status: 'approved',
+        reviewed_by: teacherData.user_id,
+        reviewed_at: new Date().toISOString()
+      })
+      .eq('id', attempt.id);
+
+    if (updateError) throw updateError;
+
+    toast.success('Attendance approved successfully');
+    fetchAttendanceForSession();
+    fetchFailedAttempts();
+  } catch (error) {
+    console.error('Error approving attempt:', error);
+    toast.error('Failed to approve attendance');
+  }
+};
+
+const rejectFailedAttempt = async (attemptId: string) => {
+  try {
+    const { error } = await supabase
+      .from('attendance_attempts')
+      .update({
+        status: 'rejected',
+        reviewed_by: teacherData.user_id,
+        reviewed_at: new Date().toISOString()
+      })
+      .eq('id', attemptId);
+
+    if (error) throw error;
+
+    toast.success('Attempt rejected');
+    fetchFailedAttempts();
+  } catch (error) {
+    console.error('Error rejecting attempt:', error);
+    toast.error('Failed to reject attempt');
+  }
+};
 
   const checkTimeValidity = (classData: any) => {
     const now = new Date();
@@ -390,6 +484,34 @@ const [loadingHistory, setLoadingHistory] = useState(false);
       console.error('Error fetching today classes:', error);
     }
   };
+
+  const fetchFailedAttempts = async () => {
+  if (!currentSessionId) return;
+  await fetchFailedAttemptsForSession(currentSessionId);
+  };
+  const fetchFailedAttemptsForSession = async (sessionId: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('attendance_attempts')
+      .select(`
+        *,
+        user_profiles!attendance_attempts_student_id_fkey (
+          id,
+          first_name,
+          last_name,
+          user_code
+        )
+      `)
+      .eq('session_id', sessionId)
+      .eq('status', 'pending')
+      .order('attempted_at', { ascending: false });
+
+    if (error) throw error;
+    setFailedAttempts(data || []);
+  } catch (error) {
+    console.error('Error fetching failed attempts:', error);
+  }
+};
 
   const generateQRCode = async (classData: any) => {
   try {
@@ -883,6 +1005,8 @@ const fetchAttendanceForHistorySession = async (sessionId: string, courseId: str
     });
 
     setAttendanceRecords(allStudentsWithStatus);
+
+    await fetchFailedAttemptsForSession(sessionId);
 
     if (attendance && attendance.length > 0) {
       await fetchCourseAttendanceStats(courseId, attendance);
@@ -1945,6 +2069,7 @@ const calculateOverlapPositions = (classes: any[]) => {
               ))}
             </div>
           )}
+          
 
           {/* History Dialog - Same structure as QR Dialog but for past sessions */}
           <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
@@ -1963,6 +2088,63 @@ const calculateOverlapPositions = (classes: any[]) => {
                     {selectedHistorySession?.room_location && ` • ${selectedHistorySession.room_location}`}
                   </AlertDescription>
                 </Alert>
+                {/* Failed Attempts Section */}
+                {failedAttempts.length > 0 && (
+                  <div className="border-2 border-yellow-200 rounded-lg p-4 bg-yellow-50">
+                    <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm sm:text-base text-yellow-900">
+                      <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                      Failed Location Attempts ({failedAttempts.length})
+                    </h3>
+                    <div className="space-y-3">
+                      {failedAttempts.map((attempt) => (
+                        <div
+                          key={attempt.id}
+                          className="flex flex-col sm:flex-row items-start justify-between p-3 rounded-lg border-2 border-yellow-300 bg-white gap-3"
+                        >
+                          <div className="flex-1">
+                            <p className="font-medium text-sm sm:text-base">
+                              {attempt.user_profiles?.first_name} {attempt.user_profiles?.last_name}
+                            </p>
+                            <p className="text-xs sm:text-sm text-muted-foreground">
+                              ID: {attempt.user_profiles?.user_code}
+                            </p>
+                            <p className="text-xs text-red-600 mt-1">
+                              ❌ {attempt.failure_reason}
+                            </p>
+                            {attempt.gps_accuracy && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                GPS Accuracy: ±{Math.round(attempt.gps_accuracy)}m
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Attempted: {new Date(attempt.attempted_at).toLocaleTimeString()}
+                            </p>
+                          </div>
+                          <div className="flex gap-2 w-full sm:w-auto">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => approveFailedAttempt(attempt)}
+                              className="flex-1 sm:flex-none bg-green-50 hover:bg-green-100 border-green-300 text-green-700"
+                            >
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => rejectFailedAttempt(attempt.id)}
+                              className="flex-1 sm:flex-none bg-red-50 hover:bg-red-100 border-red-300 text-red-700"
+                            >
+                              <XCircle className="h-3 w-3 mr-1" />
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <h3 className="font-semibold mb-3 flex items-center gap-2 text-sm sm:text-base">

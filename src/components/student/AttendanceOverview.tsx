@@ -177,205 +177,292 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
   };
 
   const markAttendance = async (code: string) => {
-    try {
-      setMarkingLoading(true);
+  try {
+    setMarkingLoading(true);
 
-      const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
 
-      // Find session by code and today's date
-      const { data: session, error: sessionError } = await supabase
-        .from('attendance_sessions')
-        .select(`
-          *,
-          courses (
-            course_name,
-            course_code
-          ),
-          user_profiles!attendance_sessions_instructor_id_fkey (
-            first_name,
-            last_name,
-            id
-          )
-        `)
-        .eq('qr_code', code.toUpperCase())
-        .eq('session_date', today)
-        .eq('is_active', true)
-        .single();
+    const { data: session, error: sessionError } = await supabase
+      .from('attendance_sessions')
+      .select(`
+        *,
+        courses (
+          course_name,
+          course_code
+        ),
+        user_profiles!attendance_sessions_instructor_id_fkey (
+          first_name,
+          last_name,
+          id
+        )
+      `)
+      .eq('qr_code', code.toUpperCase())
+      .eq('session_date', today)
+      .eq('is_active', true)
+      .single();
 
-      if (sessionError || !session) {
-        toast.error('Invalid session code or session has expired');
-        return;
-      }
+    if (sessionError || !session) {
+      toast.error('Invalid session code or session has expired');
+      return;
+    }
 
-      // Get student's location
-      let studentLocation: { latitude: number; longitude: number } | null = null;
-      let distanceFromTeacher: number | null = null;
-      
+    // Check if already marked
+    const { data: existingAttendance } = await supabase
+      .from('attendance')
+      .select('id, status')
+      .eq('session_id', session.id)
+      .eq('student_id', studentData.user_id)
+      .single();
+
+    if (existingAttendance) {
+      toast.info(`Already marked as ${existingAttendance.status}`);
+      return;
+    }
+
+    // Check if already has pending attempt
+    const { data: existingAttempt } = await supabase
+      .from('attendance_attempts')
+      .select('id, status')
+      .eq('session_id', session.id)
+      .eq('student_id', studentData.user_id)
+      .eq('status', 'pending')
+      .single();
+
+    if (existingAttempt) {
+      toast.info('You already have a pending verification request. Please wait for teacher approval.');
+      return;
+    }
+
+    // Verify enrollment
+    const { data: enrollment } = await supabase
+      .from('enrollments')
+      .select('id')
+      .eq('course_id', session.course_id)
+      .eq('student_id', studentData.user_id)
+      .eq('status', 'enrolled')
+      .single();
+
+    if (!enrollment) {
+      toast.error('You are not enrolled in this course');
+      return;
+    }
+
+    let studentLocation: { latitude: number; longitude: number } | null = null;
+    let distanceFromTeacher: number | null = null;
+    let locationAccuracy: number | null = null;
+    
+    const hasTeacherLocation = session.teacher_latitude && session.teacher_longitude;
+    
+    if (hasTeacherLocation) {
       try {
-        toast.info('📍 Getting your location...');
-        studentLocation = await getCurrentLocation();
+        // Single toast for getting location
+        const locationToast = toast.loading('📍 Verifying your location...');
         
-        // Verify location if teacher location is available
-        if (session.teacher_latitude && session.teacher_longitude) {
-          const teacherLocation = {
-            latitude: session.teacher_latitude,
-            longitude: session.teacher_longitude
+        // Get location with accuracy
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          const ACCEPTABLE_ACCURACY = 30;
+          const MAX_WAIT_TIME = 15000;
+          const startTime = Date.now();
+          let bestPosition: GeolocationPosition | null = null;
+          let watchId: number;
+
+          const checkPosition = (pos: GeolocationPosition) => {
+            const elapsed = Date.now() - startTime;
+            
+            if (!bestPosition || pos.coords.accuracy < bestPosition.coords.accuracy) {
+              bestPosition = pos;
+            }
+
+            if (pos.coords.accuracy <= ACCEPTABLE_ACCURACY || elapsed >= MAX_WAIT_TIME) {
+              navigator.geolocation.clearWatch(watchId);
+              resolve(bestPosition || pos);
+            }
           };
-          
-          distanceFromTeacher = calculateDistance(teacherLocation, studentLocation);
-          
-          // Check if within 20 meters (accounting for GPS inaccuracy)
-          const ALLOWED_RADIUS = 200; // meters
-          
-          if (distanceFromTeacher > ALLOWED_RADIUS) {
-            toast.error(
-              `❌ You must be within 15 meters of the teacher. You are ${Math.round(distanceFromTeacher)} meters away.`,
-              { duration: 5000 }
-            );
-            return;
+
+          const handleError = (error: GeolocationPositionError) => {
+            navigator.geolocation.clearWatch(watchId);
+            reject(error);
+          };
+
+          watchId = navigator.geolocation.watchPosition(checkPosition, handleError, {
+            enableHighAccuracy: true,
+            timeout: MAX_WAIT_TIME,
+            maximumAge: 0,
+          });
+        });
+
+        toast.dismiss(locationToast);
+
+        studentLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        };
+        locationAccuracy = position.coords.accuracy;
+        
+        const teacherLocation = {
+          latitude: session.teacher_latitude,
+          longitude: session.teacher_longitude
+        };
+        
+        distanceFromTeacher = calculateDistance(teacherLocation, studentLocation);
+        
+        // Adaptive radius based on GPS accuracy
+        const teacherAccuracy = 20;
+        const studentAccuracy = locationAccuracy || 50;
+        const combinedAccuracy = Math.sqrt(
+          teacherAccuracy * teacherAccuracy + studentAccuracy * studentAccuracy
+        );
+        const ADAPTIVE_RADIUS = Math.min(15 + combinedAccuracy + 10, 100);
+        
+        if (distanceFromTeacher > ADAPTIVE_RADIUS) {
+          // Record failed attempt
+          const { error: attemptError } = await supabase
+            .from('attendance_attempts')
+            .insert({
+              session_id: session.id,
+              student_id: studentData.user_id,
+              course_id: session.course_id,
+              failure_reason: `Distance: ${Math.round(distanceFromTeacher)}m (Required: ${Math.round(ADAPTIVE_RADIUS)}m)`,
+              student_latitude: studentLocation.latitude,
+              student_longitude: studentLocation.longitude,
+              distance_from_teacher: distanceFromTeacher,
+              gps_accuracy: locationAccuracy,
+              status: 'pending'
+            });
+
+          if (attemptError) {
+            console.error('Failed to record attempt:', attemptError);
           }
-          
-          toast.success(`Location verified! Distance: ${Math.round(distanceFromTeacher)}m`, { duration: 3000 });
-        } else {
-          toast.info('Location verification not available for this session');
-        }
-      } catch (locationError: any) {
-        // If teacher set location, require it from student
-        if (session.teacher_latitude && session.teacher_longitude) {
+
           toast.error(
-            locationError.message || '❌ Location access is required to mark attendance. Please enable location services.',
-            { duration: 5000 }
+            `Location verification failed\n\n` +
+            `Distance: ${Math.round(distanceFromTeacher)}m\n` +
+            `Required: ${Math.round(ADAPTIVE_RADIUS)}m\n\n` +
+            `📋 Your attempt has been logged.\n` +
+            `Your teacher can manually verify and approve your attendance.`,
+            { duration: 8000 }
           );
+          
           return;
         }
-        // Otherwise, continue without location verification
-        console.warn('Location not available:', locationError);
-        toast.warning('Proceeding without location verification');
-      }
+        
+      } catch (locationError: any) {
+        console.error('Location error:', locationError);
+        
+        let errorReason = 'Location access denied or unavailable';
+        if (locationError.code === 1) {
+          errorReason = 'Location permission denied';
+        } else if (locationError.code === 2) {
+          errorReason = 'Location unavailable';
+        } else if (locationError.code === 3) {
+          errorReason = 'Location request timeout';
+        }
 
-      // Check if already marked for this session
-      const { data: existingAttendance } = await supabase
-        .from('attendance')
-        .select('id, status')
-        .eq('session_id', session.id)
-        .eq('student_id', studentData.user_id)
-        .single();
+        // Record failed attempt
+        await supabase
+          .from('attendance_attempts')
+          .insert({
+            session_id: session.id,
+            student_id: studentData.user_id,
+            course_id: session.course_id,
+            failure_reason: errorReason,
+            status: 'pending'
+          });
 
-      if (existingAttendance) {
-        toast.info(`Already marked as ${existingAttendance.status} for this class`);
-        return;
-      }
-
-      // Verify enrollment
-      const { data: enrollment } = await supabase
-        .from('enrollments')
-        .select('id')
-        .eq('course_id', session.course_id)
-        .eq('student_id', studentData.user_id)
-        .eq('status', 'enrolled')
-        .single();
-
-      if (!enrollment) {
-        toast.error('You are not enrolled in this course');
-        return;
-      }
-
-      // Determine status based on time
-      const now = new Date();
-      const currentTime = now.toTimeString().slice(0, 5);
-      const classStartTime = session.start_time;
-      const classEndTime = session.end_time;
-
-      if (currentTime > classEndTime) {
-        toast.error('Class has ended. Cannot mark attendance.');
-        return;
-      }
-
-      // Calculate minutes since class start
-      const [startHour, startMin] = classStartTime.split(':').map(Number);
-      const startDate = new Date();
-      startDate.setHours(startHour, startMin, 0, 0);
-      
-      const elapsedMs = now.getTime() - startDate.getTime();
-      const elapsedMinutes = Math.floor(elapsedMs / 60000);
-
-      let status = 'present';
-      let statusMessage = '✅ Attendance marked as PRESENT!';
-      
-      if (elapsedMinutes > 10) {
-        status = 'late';
-        statusMessage = '⚠️ Marked as LATE (0.5x credit) - Arrived after 10 minutes';
-      }
-
-      // Prepare device info with location data
-      const deviceInfo: any = {
-        timestamp: new Date().toISOString(),
-        minutes_since_start: elapsedMinutes,
-        has_location: !!studentLocation
-      };
-      
-      if (studentLocation && distanceFromTeacher !== null) {
-        deviceInfo.distance_verified = true;
-        deviceInfo.distance_meters = Math.round(distanceFromTeacher);
-        deviceInfo.location_accuracy = 'verified';
-      } else if (studentLocation) {
-        deviceInfo.location_captured = true;
-        deviceInfo.location_accuracy = 'no_teacher_location';
-      } else {
-        deviceInfo.location_accuracy = 'unavailable';
-      }
-
-      // Insert attendance record with location
-      const attendanceData: any = {
-        course_id: session.course_id,
-        student_id: studentData.user_id,
-        class_date: session.session_date,
-        status: status,
-        session_id: session.id,
-        marked_by: studentData.user_id,
-        marked_at: new Date().toISOString(),
-        device_info: deviceInfo
-      };
-
-      // Add location coordinates if available
-      if (studentLocation) {
-        attendanceData.student_latitude = studentLocation.latitude;
-        attendanceData.student_longitude = studentLocation.longitude;
-      }
-      
-      if (distanceFromTeacher !== null) {
-        attendanceData.distance_from_teacher = distanceFromTeacher;
-      }
-
-      const { error: attendanceError } = await supabase
-        .from('attendance')
-        .insert(attendanceData);
-
-      if (attendanceError) throw attendanceError;
-
-      // Show success message with location info
-      if (distanceFromTeacher !== null) {
-        toast.success(
-          `${statusMessage}\n📍 Distance: ${Math.round(distanceFromTeacher)}m from teacher`,
-          { duration: 4000 }
+        toast.error(
+          `Unable to verify location\n\n` +
+          `${errorReason}\n\n` +
+          `📋 Your attempt has been logged.\n` +
+          `Your teacher can manually verify and approve your attendance.`,
+          { duration: 8000 }
         );
-      } else {
-        toast.success(statusMessage, { duration: 4000 });
+        
+        return;
       }
-      
-      setSessionCode('');
-      setScanDialogOpen(false);
-      fetchAttendanceData();
-      fetchTodayAttendance();
-      fetchActiveSessions();
-
-    } catch (error: any) {
-      console.error('Error marking attendance:', error);
-      toast.error(error.message || 'Failed to mark attendance');
-    } finally {
-      setMarkingLoading(false);
     }
-  };
+
+    // Check time validity
+    const now = new Date();
+    const currentTime = now.toTimeString().slice(0, 5);
+
+    if (currentTime > session.end_time) {
+      toast.error('Class has ended. Cannot mark attendance.');
+      return;
+    }
+
+    // Calculate status based on time
+    const [startHour, startMin] = session.start_time.split(':').map(Number);
+    const startDate = new Date();
+    startDate.setHours(startHour, startMin, 0, 0);
+    
+    const elapsedMs = now.getTime() - startDate.getTime();
+    const elapsedMinutes = Math.floor(elapsedMs / 60000);
+
+    let status = 'present';
+    
+    if (elapsedMinutes > 10) {
+      status = 'late';
+    }
+
+    const deviceInfo: any = {
+      timestamp: new Date().toISOString(),
+      minutes_since_start: elapsedMinutes,
+      has_location: !!studentLocation,
+      location_verified: hasTeacherLocation && !!studentLocation,
+      gps_accuracy: locationAccuracy ? Math.round(locationAccuracy) : null
+    };
+    
+    if (studentLocation && distanceFromTeacher !== null) {
+      deviceInfo.distance_meters = Math.round(distanceFromTeacher);
+    }
+
+    const attendanceData: any = {
+      course_id: session.course_id,
+      student_id: studentData.user_id,
+      class_date: session.session_date,
+      status: status,
+      session_id: session.id,
+      marked_by: studentData.user_id,
+      marked_at: new Date().toISOString(),
+      device_info: deviceInfo
+    };
+
+    if (studentLocation) {
+      attendanceData.student_latitude = studentLocation.latitude;
+      attendanceData.student_longitude = studentLocation.longitude;
+    }
+    
+    if (distanceFromTeacher !== null) {
+      attendanceData.distance_from_teacher = distanceFromTeacher;
+    }
+
+    const { error: attendanceError } = await supabase
+      .from('attendance')
+      .insert(attendanceData);
+
+    if (attendanceError) throw attendanceError;
+
+    // Single success toast
+    toast.success(
+      status === 'present' 
+        ? '✅ Attendance marked as PRESENT!' 
+        : '⚠️ Marked as LATE (0.5x credit)',
+      { duration: 3000 }
+    );
+    
+    setSessionCode('');
+    setScanDialogOpen(false);
+    fetchAttendanceData();
+    fetchTodayAttendance();
+    fetchActiveSessions();
+
+  } catch (error: any) {
+    console.error('Error marking attendance:', error);
+    toast.error(error.message || 'Failed to mark attendance');
+  } finally {
+    setMarkingLoading(false);
+  }
+};
 
   const handleManualEntry = async () => {
     if (!sessionCode || sessionCode.length !== 6) {
