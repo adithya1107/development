@@ -555,12 +555,11 @@ const StudentPlacement: React.FC<StudentPlacementPortalProps> = ({ studentData }
                                 {placement.location}
                               </div>
                               <div className="flex items-center gap-1">
-                                <DollarSign className="h-4 w-4" />
-                                {placement.salary_range}
+                                ₹{placement.salary_range}
                               </div>
                               <div className="flex items-center gap-1">
                                 <Clock className="h-4 w-4" />
-                                {placement.experience_required}
+                                {placement.experience_required} year experience
                               </div>
                             </div>
                           </div>

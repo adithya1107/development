@@ -136,8 +136,8 @@ const StudentDashboard = ({ studentData, onNavigate }: StudentDashboardProps) =>
         .from('events')
         .select('*')
         .eq('college_id', studentData.college_id)
-        .gte('event_date', new Date().toISOString())
-        .order('event_date', { ascending: true });
+        .gte('start_date', new Date().toISOString())
+        .order('start_date', { ascending: true });
 
       if (eventsError) {
         console.error('Events error:', eventsError);

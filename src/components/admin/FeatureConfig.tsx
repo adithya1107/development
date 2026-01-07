@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
-import { GripVertical, Plus, Edit, Trash2, Eye, EyeOff, Users, BookOpen, Calendar, DollarSign, Building, Shield, FileText, Settings, Activity, Home, MessageSquare, Bell, BarChart, ClipboardList, Briefcase, Award, Search, Save, X, Sparkles, Layers, Filter, CheckCircle, RefreshCw, AlertCircle, Info } from 'lucide-react';
+import { GripVertical, Plus, Edit, Trash2, Eye, EyeOff, Users, BookOpen, Calendar, DollarSign, Building, Shield, FileText, Settings, Activity, Home, MessageSquare, Bell, BarChart, ClipboardList, Briefcase, Award, Search, Save, X, Sparkles, Layers, Filter, CheckCircle, RefreshCw, AlertCircle, Info, Clock, GraduationCap, TrendingUp, ShoppingBag, Sun, Mail, HelpCircle, Building2, PlusCircle, Heart, CreditCard } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -19,6 +19,7 @@ const ICON_OPTIONS = [
   { value: 'Calendar', label: 'Calendar', icon: Calendar },
   { value: 'DollarSign', label: 'Dollar', icon: DollarSign },
   { value: 'Building', label: 'Building', icon: Building },
+  { value: 'Building2Icon', label: 'Building 2', icon: Building2 },
   { value: 'Shield', label: 'Shield', icon: Shield },
   { value: 'FileText', label: 'File', icon: FileText },
   { value: 'Settings', label: 'Settings', icon: Settings },
@@ -29,23 +30,83 @@ const ICON_OPTIONS = [
   { value: 'BarChart', label: 'Chart', icon: BarChart },
   { value: 'ClipboardList', label: 'Clipboard', icon: ClipboardList },
   { value: 'Briefcase', label: 'Briefcase', icon: Briefcase },
-  { value: 'Award', label: 'Award', icon: Award }
+  { value: 'Award', label: 'Award', icon: Award },
+  { value: 'Clock', label: 'Clock', icon: Clock },
+  { value: 'GraduationCap', label: 'Graduation Cap', icon: GraduationCap },
+  { value: 'TrendingUp', label: 'Trending Up', icon: TrendingUp },
+  { value: 'ShoppingBag', label: 'Shopping Bag', icon: ShoppingBag },
+  { value: 'Sun', label: 'Sun', icon: Sun },
+  { value: 'Mail', label: 'Mail', icon: Mail },
+  { value: 'HelpCircle', label: 'Help Circle', icon: HelpCircle },
+  { value: 'PlusCircle', label: 'Plus Circle', icon: PlusCircle },
+  { value: 'Heart', label: 'Heart', icon: Heart },
+  { value: 'CreditCard', label: 'Credit Card', icon: CreditCard },
+  { value: 'Sparkle', label: 'Sparkle', icon: Sparkles }
 ];
 
 const USER_TYPES = [
-  { value: 'student', label: 'Student', color: 'bg-blue-500' },
-  { value: 'faculty', label: 'Faculty', color: 'bg-green-500' },
-  { value: 'parent', label: 'Parent', color: 'bg-purple-500' },
-  { value: 'alumni', label: 'Alumni', color: 'bg-orange-500' }
+  { value: 'student', label: 'Student' },
+  { value: 'faculty', label: 'Faculty' },
+  { value: 'parent', label: 'Parent' },
+  { value: 'alumni', label: 'Alumni' }
 ];
 
-const FEATURE_CATEGORIES = [
-  { value: 'academic', label: 'Academic', color: 'bg-blue-500' },
-  { value: 'communication', label: 'Communication', color: 'bg-green-500' },
-  { value: 'administrative', label: 'Administrative', color: 'bg-orange-500' },
-  { value: 'alumni', label: 'Alumni', color: 'bg-purple-500' },
-  { value: 'facilities', label: 'Facilities', color: 'bg-pink-500' }
-];
+// Hardcoded features specific to each user type based on portal files
+const USER_TYPE_FEATURES = {
+  student: [
+    'dashboard',
+    'schedule',
+    'attendance',
+    'courses',
+    'quizzes',
+    'gradebook',
+    'cgpa',
+    'events',
+    'department',
+    'placements',
+    'clubs',
+    'marketplace',
+    'furlong',
+    'communication',
+    'announcements',
+    'hostel',
+    'support'
+  ],
+  faculty: [
+    'dashboard',
+    'schedule',
+    'courses',
+    'gradebook',
+    'cgpa',
+    'extra-classes',
+    'events',
+    'performance',
+    'communication',
+    'parent-interaction',
+    'absence',
+    'recognition',
+    'department',
+    'clubs',
+    'support'
+  ],
+  parent: [
+    'dashboard',
+    'academic',
+    'attendance',
+    'payments',
+    'communication',
+    'events'
+  ],
+  alumni: [
+    'dashboard',
+    'events',
+    'networking',
+    'contributions',
+    'communication',
+    'documents',
+    'support'
+  ]
+};
 
 const FeatureConfig = ({ userProfile }) => {
   const [availableFeatures, setAvailableFeatures] = useState([]);
@@ -54,23 +115,11 @@ const FeatureConfig = ({ userProfile }) => {
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverIndex, setDragOverIndex] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('all');
-  const [isAddFeatureOpen, setIsAddFeatureOpen] = useState(false);
   const [isEditFeatureOpen, setIsEditFeatureOpen] = useState(false);
   const [selectedFeature, setSelectedFeature] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [newFeature, setNewFeature] = useState({
-    feature_key: '',
-    feature_name: '',
-    description: '',
-    icon_name: 'Users',
-    category: 'academic',
-    default_enabled: true,
-    requires_permissions: false,
-    applicable_user_types: ['student'] // NEW: Default to student
-  });
 
   useEffect(() => { loadAllData(); }, [userProfile]);
 
@@ -160,34 +209,9 @@ const FeatureConfig = ({ userProfile }) => {
     }
   };
 
-  const handleAddNewFeature = async () => {
-    if (!newFeature.feature_key || !newFeature.feature_name) {
-      toast({ title: "Validation Error", description: "Feature key and name are required.", variant: "destructive" });
-      return;
-    }
-    if (!newFeature.applicable_user_types || newFeature.applicable_user_types.length === 0) {
-      toast({ title: "Validation Error", description: "Select at least one user type.", variant: "destructive" });
-      return;
-    }
-    try {
-      const { data, error } = await supabase.from('feature_definitions').insert([{ ...newFeature, is_system_feature: false }]).select().single();
-      if (error) throw error;
-      setAvailableFeatures([data, ...availableFeatures]);
-      setNewFeature({ feature_key: '', feature_name: '', description: '', icon_name: 'Users', category: 'academic', default_enabled: true, requires_permissions: false, applicable_user_types: ['student'] });
-      setIsAddFeatureOpen(false);
-      toast({ title: "Success", description: "Feature created successfully. You can now assign it to user types." });
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to create. " + (error.message || ''), variant: "destructive" });
-    }
-  };
-
   const handleUpdateFeature = async () => {
-    if (!selectedFeature.applicable_user_types || selectedFeature.applicable_user_types.length === 0) {
-      toast({ title: "Validation Error", description: "Select at least one user type.", variant: "destructive" });
-      return;
-    }
     try {
-      await supabase.from('feature_definitions').update({ feature_name: selectedFeature.feature_name, description: selectedFeature.description, icon_name: selectedFeature.icon_name, category: selectedFeature.category, default_enabled: selectedFeature.default_enabled, requires_permissions: selectedFeature.requires_permissions, applicable_user_types: selectedFeature.applicable_user_types, updated_at: new Date().toISOString() }).eq('id', selectedFeature.id);
+      await supabase.from('feature_definitions').update({ feature_name: selectedFeature.feature_name, description: selectedFeature.description, icon_name: selectedFeature.icon_name, updated_at: new Date().toISOString() }).eq('id', selectedFeature.id);
       setAvailableFeatures(availableFeatures.map(f => f.id === selectedFeature.id ? selectedFeature : f));
       setIsEditFeatureOpen(false);
       setSelectedFeature(null);
@@ -197,54 +221,25 @@ const FeatureConfig = ({ userProfile }) => {
     }
   };
 
-  const handleDeleteFeature = async (featureId, isSystemFeature) => {
-    if (isSystemFeature) { toast({ title: "Cannot Delete", description: "System features cannot be deleted.", variant: "destructive" }); return; }
-    if (!confirm('Are you sure? This will remove the feature from all configurations.')) return;
-    try {
-      await supabase.from('feature_configurations').delete().eq('feature_id', featureId);
-      await supabase.from('feature_definitions').delete().eq('id', featureId).eq('is_system_feature', false);
-      setAvailableFeatures(availableFeatures.filter(f => f.id !== featureId));
-      Object.keys(userTypeConfigs).forEach(userType => { userTypeConfigs[userType] = userTypeConfigs[userType].filter(f => f.id !== featureId); });
-      setUserTypeConfigs({ ...userTypeConfigs });
-      toast({ title: "Success", description: "Feature deleted successfully." });
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to delete. " + (error.message || ''), variant: "destructive" });
-    }
+  // Filter features based on user type's allowed features
+  const getFilteredFeaturesForUserType = () => {
+    const allowedFeatureKeys = USER_TYPE_FEATURES[selectedUserType] || [];
+    return availableFeatures.filter(f => {
+      const matchesSearch = f.feature_name.toLowerCase().includes(searchTerm.toLowerCase()) || f.description?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesUserType = allowedFeatureKeys.includes(f.feature_key);
+      return matchesSearch && matchesUserType;
+    });
   };
 
-  // NEW: Filter features based on applicable user types
-  const filteredFeatures = availableFeatures.filter(f => {
-    const matchesSearch = f.feature_name.toLowerCase().includes(searchTerm.toLowerCase()) || f.description?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = filterCategory === 'all' || f.category === filterCategory;
-    const matchesUserType = !f.applicable_user_types || f.applicable_user_types.length === 0 || f.applicable_user_types.includes(selectedUserType);
-    return matchesSearch && matchesCategory && matchesUserType;
-  });
-
+  const filteredFeatures = getFilteredFeaturesForUserType();
   const currentFeatures = getCurrentFeatures();
   const unassignedFeatures = filteredFeatures.filter(f => !currentFeatures.find(cf => cf.id === f.id));
-
-  // NEW: Toggle user type selection
-  const toggleUserType = (userType, isNewFeature = true) => {
-    if (isNewFeature) {
-      const current = newFeature.applicable_user_types || [];
-      const updated = current.includes(userType)
-        ? current.filter(t => t !== userType)
-        : [...current, userType];
-      setNewFeature({ ...newFeature, applicable_user_types: updated });
-    } else {
-      const current = selectedFeature.applicable_user_types || [];
-      const updated = current.includes(userType)
-        ? current.filter(t => t !== userType)
-        : [...current, userType];
-      setSelectedFeature({ ...selectedFeature, applicable_user_types: updated });
-    }
-  };
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
           <p className="mt-4 text-muted-foreground">Loading feature configuration...</p>
         </div>
       </div>
@@ -256,30 +251,22 @@ const FeatureConfig = ({ userProfile }) => {
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <div className="flex items-center space-x-3 mb-2">
-            <div className="p-2 rounded-lg">
+            <div className="p-2 rounded-lg bg-white/5">
               <Layers className="w-6 h-6 text-white" />
             </div>
             <h1 className="text-2xl font-bold">Feature Configuration Manager</h1>
           </div>
           <p className="text-muted-foreground">Drag and drop features to customize the interface for each user type</p>
-          <div className="mt-2 flex items-center space-x-2 text-sm">
-            <Info className="w-4 h-4" />
-            <span>Only features applicable to {selectedUserType}s are shown</span>
-          </div>
         </div>
         
         <div className="flex items-center space-x-3">
           {hasChanges && (
-            <Badge variant="outline" className="animate-pulse">
+            <Badge variant="outline" className="animate-pulse border-white/30">
               Unsaved Changes
             </Badge>
           )}
-          <Button variant="outline" size="sm" onClick={loadAllData} disabled={isLoading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button onClick={handleSaveChanges} disabled={!hasChanges || isSaving}>
-            {isSaving ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>Saving...</> : <><Save className="w-4 h-4 mr-2" />Save Changes</>}
+          <Button onClick={handleSaveChanges} disabled={!hasChanges || isSaving} className="bg-white text-black hover:bg-white/90">
+            {isSaving ? <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black mr-2"></div>Saving...</> : <><Save className="w-4 h-4 mr-2" />Save Changes</>}
           </Button>
         </div>
       </div>
@@ -290,9 +277,18 @@ const FeatureConfig = ({ userProfile }) => {
             <Label className="text-lg font-semibold">Configure For:</Label>
             <div className="flex flex-wrap gap-2">
               {USER_TYPES.map((type) => (
-                <Button key={type.value} variant={selectedUserType === type.value ? "default" : "outline"} onClick={() => { if (hasChanges && !confirm('You have unsaved changes. Switch anyway?')) return; setSelectedUserType(type.value); setHasChanges(false); }} className={selectedUserType === type.value ? `${type.color} text-white` : ''}>
+                <Button 
+                  key={type.value} 
+                  variant={selectedUserType === type.value ? "default" : "outline"} 
+                  onClick={() => { 
+                    if (hasChanges && !confirm('You have unsaved changes. Switch anyway?')) return; 
+                    setSelectedUserType(type.value); 
+                    setHasChanges(false); 
+                  }} 
+                  className={selectedUserType === type.value ? 'bg-white text-black hover:bg-white/90' : 'border-white/20 hover:bg-white/5'}
+                >
                   {type.label}
-                  <Badge className="ml-2" variant="secondary">{userTypeConfigs[type.value]?.length || 0}</Badge>
+                  <Badge className="ml-2 bg-black/10 text-black border-0" variant="secondary">{userTypeConfigs[type.value]?.length || 0}</Badge>
                 </Button>
               ))}
             </div>
@@ -308,7 +304,7 @@ const FeatureConfig = ({ userProfile }) => {
                 <Sparkles className="w-5 h-5" />
                 <span>Available for {USER_TYPES.find(t => t.value === selectedUserType)?.label}</span>
               </CardTitle>
-              <Badge variant="outline">{unassignedFeatures.length}</Badge>
+              <Badge variant="outline" className="border-white/30">{unassignedFeatures.length}</Badge>
             </div>
             <CardDescription>Click to add to configuration</CardDescription>
           </CardHeader>
@@ -316,40 +312,26 @@ const FeatureConfig = ({ userProfile }) => {
             <div className="space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10" />
+                <Input placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-10 bg-white/5 border-white/10" />
               </div>
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger><Filter className="w-4 h-4 mr-2" /><SelectValue placeholder="Filter" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {FEATURE_CATEGORIES.map((cat) => <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
               {unassignedFeatures.map((feature) => {
                 const Icon = getIconComponent(feature.icon_name);
-                const category = FEATURE_CATEGORIES.find(c => c.value === feature.category);
                 return (
                   <div key={feature.id} className="p-4 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-all cursor-pointer group" onClick={() => handleAddFromAvailable(feature)}>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start space-x-3 flex-1">
-                        <div className="p-2 rounded-lg"><Icon className="w-4 h-4" /></div>
+                        <div className="p-2 rounded-lg bg-white/5">
+                          <Icon className="w-4 h-4" />
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2 mb-1">
                             <p className="font-medium text-sm">{feature.feature_name}</p>
                             {feature.requires_permissions && <Shield className="w-3 h-3" title="Requires Permissions" />}
-                            {feature.is_system_feature && <Badge variant="outline" className="text-xs">System</Badge>}
+                            {feature.is_system_feature && <Badge variant="outline" className="text-xs border-white/30">System</Badge>}
                           </div>
                           <p className="text-xs text-muted-foreground line-clamp-2">{feature.description || 'No description'}</p>
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            <Badge className={`text-xs ${category?.color} text-white`}>{category?.label}</Badge>
-                            {feature.applicable_user_types && feature.applicable_user_types.length > 0 && (
-                              <Badge variant="outline" className="text-xs">
-                                {feature.applicable_user_types.length} type{feature.applicable_user_types.length > 1 ? 's' : ''}
-                              </Badge>
-                            )}
-                          </div>
                         </div>
                       </div>
                       <Button size="sm" variant="ghost" className="opacity-0 group-hover:opacity-100 transition-opacity ml-2" onClick={(e) => { e.stopPropagation(); setSelectedFeature({ ...feature }); setIsEditFeatureOpen(true); }}>
@@ -361,9 +343,9 @@ const FeatureConfig = ({ userProfile }) => {
               })}
               {unassignedFeatures.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
-                  <CheckCircle className="w-12 h-12 mx-auto mb-4 opacity-50 text-green-400" />
+                  <CheckCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p className="font-medium">All applicable features assigned!</p>
-                  <p className="text-sm mt-1">Create new features or switch user type</p>
+                  <p className="text-sm mt-1">All features for this user type are configured</p>
                 </div>
               )}
             </div>
@@ -378,7 +360,7 @@ const FeatureConfig = ({ userProfile }) => {
                 <Layers className="w-5 h-5" />
                 <span>{USER_TYPES.find(t => t.value === selectedUserType)?.label} Features</span>
               </CardTitle>
-              <Badge variant="outline">{currentFeatures.length}</Badge>
+              <Badge variant="outline" className="border-white/30">{currentFeatures.length}</Badge>
             </div>
             <CardDescription>
               Drag to reorder • Toggle to enable/disable • Click × to remove
@@ -399,7 +381,6 @@ const FeatureConfig = ({ userProfile }) => {
                   const feature = getFeatureDetails(configFeature.id);
                   if (!feature) return null;
                   const Icon = getIconComponent(feature.icon_name);
-                  const category = FEATURE_CATEGORIES.find(c => c.value === feature.category);
                   
                   return (
                     <div
@@ -410,13 +391,13 @@ const FeatureConfig = ({ userProfile }) => {
                       onDragOver={(e) => handleDragOver(e, index)}
                       onDragLeave={() => setDragOverIndex(null)}
                       onDrop={(e) => handleDrop(e, index)}
-                      className={`p-4 rounded-lg border border-white/10 bg-white/5 transition-all duration-200 cursor-move hover:bg-white/10 hover:border-purple-400/30 hover:shadow-lg ${
+                      className={`p-4 rounded-lg border border-white/10 bg-white/5 transition-all duration-200 cursor-move hover:bg-white/10 hover:border-white/30 hover:shadow-lg ${
                         dragOverIndex === index ? 'scale-105' : ''
                       } ${!configFeature.is_enabled ? 'opacity-50' : ''}`}
                     >
                       <div className="flex items-center space-x-4">
                         <GripVertical className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-                        <div className="p-2 rounded-lg">
+                        <div className="p-2 rounded-lg bg-white/5">
                           <Icon className="w-5 h-5" />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -425,20 +406,18 @@ const FeatureConfig = ({ userProfile }) => {
                             {feature.requires_permissions && (
                               <Shield className="w-4 h-4" />
                             )}
-                            <Badge className={`text-xs ${category?.color} text-white`}>
-                              {category?.label}
-                            </Badge>
                           </div>
                           <p className="text-sm text-muted-foreground">{feature.description}</p>
                         </div>
                         <div className="flex items-center space-x-2">
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-xs border-white/30">
                             #{index + 1}
                           </Badge>
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => handleToggleFeature(configFeature.id)}
+                            className="hover:bg-white/5"
                           >
                             {configFeature.is_enabled ? (
                               <Eye className="w-4 h-4" />
@@ -450,6 +429,7 @@ const FeatureConfig = ({ userProfile }) => {
                             size="sm"
                             variant="ghost"
                             onClick={() => handleRemoveFeature(configFeature.id)}
+                            className="hover:bg-white/5"
                           >
                             <X className="w-4 h-4" />
                           </Button>
@@ -467,7 +447,7 @@ const FeatureConfig = ({ userProfile }) => {
       {/* Edit Feature Dialog */}
       {selectedFeature && (
         <Dialog open={isEditFeatureOpen} onOpenChange={setIsEditFeatureOpen}>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-background border-white/10">
             <DialogHeader>
               <DialogTitle>Edit Feature</DialogTitle>
               <DialogDescription>Modify feature properties</DialogDescription>
@@ -480,6 +460,7 @@ const FeatureConfig = ({ userProfile }) => {
                   onChange={(e) =>
                     setSelectedFeature({ ...selectedFeature, feature_name: e.target.value })
                   }
+                  className="bg-white/5 border-white/10"
                 />
               </div>
               <div>
@@ -487,6 +468,7 @@ const FeatureConfig = ({ userProfile }) => {
                 <Input
                   value={selectedFeature.feature_key}
                   disabled={selectedFeature.is_system_feature}
+                  className="bg-white/5 border-white/10"
                 />
               </div>
               <div>
@@ -497,10 +479,10 @@ const FeatureConfig = ({ userProfile }) => {
                     setSelectedFeature({ ...selectedFeature, icon_name: v })
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="bg-white/5 border-white/10">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-background border-white/10">
                     {ICON_OPTIONS.map((icon) => {
                       const Icon = icon.icon;
                       return (
@@ -523,27 +505,15 @@ const FeatureConfig = ({ userProfile }) => {
                     setSelectedFeature({ ...selectedFeature, description: e.target.value })
                   }
                   rows={3}
+                  className="bg-white/5 border-white/10"
                 />
               </div>
             </div>
             <DialogFooter>
-              {!selectedFeature.is_system_feature && (
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    handleDeleteFeature(selectedFeature.id, selectedFeature.is_system_feature);
-                    setIsEditFeatureOpen(false);
-                  }}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </Button>
-              )}
-              <div className="flex-1"></div>
-              <Button variant="outline" onClick={() => setIsEditFeatureOpen(false)}>
+              <Button variant="outline" onClick={() => setIsEditFeatureOpen(false)} className="border-white/20">
                 Cancel
               </Button>
-              <Button onClick={handleUpdateFeature}>Save Changes</Button>
+              <Button onClick={handleUpdateFeature} className="bg-white text-black hover:bg-white/90">Save Changes</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

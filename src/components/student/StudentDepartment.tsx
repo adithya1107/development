@@ -1,20 +1,100 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+/**
+ * StudentDepartment Component
+ * 
+ * Department view for students with class_representative tag:
+ * - Read-only access to department messages
+ * - View department events on calendar
+ * - View announcements
+ * - Cannot send messages or create events
+ */
+
+import React, { useState, useRef, useEffect } from "react";
 import { 
-  Calendar, Clock, MapPin, AlertCircle, Users, Building2, 
-  Loader2, Search, Wifi, WifiOff, Bell, CalendarDays,
-  ChevronRight, ExternalLink, Filter
-} from 'lucide-react';
+  CalendarDays, Clock, User, Building2, Search, Wifi, WifiOff, 
+  AlertCircle, Loader2, Bell, Pin, ExternalLink, Users, Crown,
+  MapPin, Calendar as CalendarIcon, CheckCheck
+} from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Calendar } from "@/components/ui/calendar";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "@/components/ui/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/components/ui/use-toast';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+interface DepartmentMessage {
+  id: string;
+  channel_id: string;
+  sender_id: string;
+  message_text: string;
+  message_type: string;
+  file_url: string | null;
+  file_name: string | null;
+  file_size: number | null;
+  is_pinned: boolean;
+  created_at: string;
+  sender?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    profile_picture_url: string | null;
+  };
+}
+
+interface DepartmentEvent {
+  id: string;
+  department_id: string;
+  event_title: string;
+  event_description: string;
+  event_type: string;
+  start_datetime: string;
+  end_datetime: string;
+  location: string | null;
+  is_all_day: boolean;
+  max_participants: number | null;
+  created_by: string;
+  created_at: string;
+  creator?: {
+    first_name: string;
+    last_name: string;
+  };
+}
+
+interface Department {
+  id: string;
+  department_name: string;
+  department_code: string;
+  department_color: string;
+  description: string | null;
+  college_id: string;
+  is_active: boolean;
+}
+
+interface DepartmentChannel {
+  id: string;
+  department_id: string;
+  channel_name: string;
+  channel_description: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+interface Announcement {
+  id: string;
+  department_id: string;
+  title: string;
+  content: string;
+  priority: string | null;
+  link: string | null;
+  is_active: boolean;
+  created_at: string;
+}
 
 interface StudentDepartmentProps {
   studentData: any;
-  userTags: any[];
+  userTags?: any[];
 }
 
 const StudentDepartment: React.FC<StudentDepartmentProps> = ({ 
@@ -22,22 +102,25 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
   userTags 
 }) => {
   const [loading, setLoading] = useState(true);
-  const [department, setDepartment] = useState<any>(null);
-  const [events, setEvents] = useState<any[]>([]);
-  const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [department, setDepartment] = useState<Department | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<DepartmentChannel | null>(null);
+  const [messages, setMessages] = useState<DepartmentMessage[]>([]);
+  const [events, setEvents] = useState<DepartmentEvent[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [realtimeStatus, setRealtimeStatus] = useState<'connected' | 'connecting' | 'disconnected' | 'error'>('connecting');
-  const [activeTab, setActiveTab] = useState('events');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'today' | 'this-week'>('upcoming');
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [searchQuery, setSearchQuery] = useState("");
   const [isClassRep, setIsClassRep] = useState(false);
   
-  const eventsSubscriptionRef = useRef<any>(null);
-  const announcementsSubscriptionRef = useRef<any>(null);
-  const departmentIdRef = useRef<string | null>(null); // 🔥 KEY FIX: Track department ID reliably
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const selectedChannelIdRef = useRef<string | null>(null);
+  const messageSubscriptionRef = useRef<any>(null);
+  const departmentIdRef = useRef<string | null>(null);
+
+  const userId = studentData?.id || studentData?.user_id;
 
   useEffect(() => {
-    const userId = studentData?.id || studentData?.user_id;
-    
     if (userId) {
       loadStudentDepartment();
     } else {
@@ -55,11 +138,15 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     };
   }, [studentData]);
 
-  // 🔥 KEY FIX: Update ref whenever department changes
   useEffect(() => {
     departmentIdRef.current = department?.id || null;
     console.log('📌 Department ref updated:', departmentIdRef.current);
   }, [department?.id]);
+
+  useEffect(() => {
+    selectedChannelIdRef.current = selectedChannel?.id || null;
+    console.log('📌 Selected channel ref updated:', selectedChannelIdRef.current);
+  }, [selectedChannel?.id]);
 
   useEffect(() => {
     if (department?.id) {
@@ -72,157 +159,114 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     };
   }, [department?.id]);
 
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
   const cleanupSubscriptions = () => {
     console.log('🧹 Cleaning up subscriptions');
-    if (eventsSubscriptionRef.current) {
-      supabase.removeChannel(eventsSubscriptionRef.current);
-      eventsSubscriptionRef.current = null;
-    }
-    if (announcementsSubscriptionRef.current) {
-      supabase.removeChannel(announcementsSubscriptionRef.current);
-      announcementsSubscriptionRef.current = null;
+    if (messageSubscriptionRef.current) {
+      supabase.removeChannel(messageSubscriptionRef.current);
+      messageSubscriptionRef.current = null;
     }
   };
 
   const subscribeToRealtimeUpdates = async () => {
-    if (!department?.id) return;
+    if (!selectedChannel?.id) return;
 
-    console.log('📡 Setting up realtime subscriptions for department:', department.id);
+    console.log('📡 Setting up realtime subscription for channel:', selectedChannel.id);
+    
+    // Clean up any existing subscription first
+    cleanupSubscriptions();
 
-    // Subscribe to events with database-level filter
-    const eventsChannelName = `dept-events-${department.id}-${Date.now()}`;
-    eventsSubscriptionRef.current = supabase
-      .channel(eventsChannelName)
+    // Create new subscription with unique channel name
+    const channelName = `student-dept-messages-${selectedChannel.id}-${Date.now()}`;
+    const subscription = supabase
+      .channel(channelName)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
-        table: 'department_events',
-        filter: `department_id=eq.${department.id}` // 🔥 Database filter
-      }, (payload) => {
-        console.log('📅 New event:', {
+        table: 'department_messages',
+        filter: `channel_id=eq.${selectedChannel.id}`
+      }, async (payload) => {
+        console.log('📨 Real-time message INSERT received:', {
           id: payload.new.id,
-          department_id: (payload.new as any).department_id,
-          current_dept: departmentIdRef.current
+          channel_id: payload.new.channel_id,
+          current_channel: selectedChannelIdRef.current,
+          matches: payload.new.channel_id === selectedChannelIdRef.current
         });
         
-        setEvents(prev => {
-          const exists = prev.some(e => e.id === payload.new.id);
-          if (exists) {
-            console.log('⚠️ Duplicate event detected, skipping');
-            return prev;
+        if (payload.new.channel_id === selectedChannelIdRef.current) {
+          console.log('✅ Message is for current channel, fetching full data');
+          
+          // Fetch full message data with sender info
+          const { data: fullMessage } = await supabase
+            .from('department_messages')
+            .select(`
+              *,
+              sender:user_profiles!department_messages_sender_id_fkey(
+                id,
+                first_name,
+                last_name,
+                profile_picture_url
+              )
+            `)
+            .eq('id', payload.new.id)
+            .single();
+
+          if (fullMessage) {
+            setMessages((prev) => {
+              const exists = prev.some(msg => msg.id === fullMessage.id);
+              if (exists) {
+                console.log('⚠️ Duplicate message detected, replacing');
+                return prev.map(msg => msg.id === fullMessage.id ? fullMessage : msg);
+              }
+              console.log('✅ Adding new message to state');
+              return [...prev, fullMessage];
+            });
+            
+            setTimeout(scrollToBottom, 100);
           }
-          console.log('✅ Adding new event to state');
-          return [payload.new as any, ...prev];
-        });
-        
-        toast({
-          title: '📅 New Event Added',
-          description: (payload.new as any).event_title,
-          duration: 4000,
-        });
+        } else {
+          console.log('⏭️ Message is for different channel, ignoring');
+        }
       })
       .on('postgres_changes', {
         event: 'UPDATE',
         schema: 'public',
-        table: 'department_events',
-        filter: `department_id=eq.${department.id}` // 🔥 Database filter
+        table: 'department_messages',
+        filter: `channel_id=eq.${selectedChannel.id}`
       }, (payload) => {
-        console.log('📝 Event updated:', payload.new);
-        setEvents(prev =>
-          prev.map(event =>
-            event.id === payload.new.id ? payload.new as any : event
-          )
-        );
-      })
-      .on('postgres_changes', {
-        event: 'DELETE',
-        schema: 'public',
-        table: 'department_events',
-        filter: `department_id=eq.${department.id}` // 🔥 Database filter
-      }, (payload) => {
-        console.log('🗑️ Event deleted:', payload.old);
-        setEvents(prev => prev.filter(event => event.id !== payload.old.id));
+        if (payload.new.channel_id === selectedChannelIdRef.current) {
+          console.log('📝 Message updated:', payload.new.id);
+          setMessages(prev =>
+            prev.map(msg => msg.id === payload.new.id ? { ...msg, ...payload.new } : msg)
+          );
+        }
       })
       .subscribe((status) => {
-        console.log('📡 Events subscription status:', status);
+        console.log('📡 Subscription status:', status);
         if (status === 'SUBSCRIBED') {
           setRealtimeStatus('connected');
-          console.log('✅ Successfully subscribed to events');
+          console.log('✅ Successfully subscribed to department messages');
         } else if (status === 'CHANNEL_ERROR') {
           setRealtimeStatus('error');
+          console.error('❌ Channel subscription error');
+        } else if (status === 'TIMED_OUT') {
+          setRealtimeStatus('disconnected');
+          console.warn('⏱️ Subscription timed out');
         }
       });
 
-    // Subscribe to announcements with database-level filter
-    const announcementsChannelName = `dept-announcements-${department.id}-${Date.now()}`;
-    announcementsSubscriptionRef.current = supabase
-      .channel(announcementsChannelName)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'announcements',
-        filter: `department_id=eq.${department.id}` // 🔥 Database filter
-      }, (payload) => {
-        console.log('📢 New announcement:', {
-          id: payload.new.id,
-          department_id: (payload.new as any).department_id,
-          current_dept: departmentIdRef.current,
-          is_active: (payload.new as any).is_active
-        });
-        
-        if ((payload.new as any).is_active) {
-          setAnnouncements(prev => {
-            const exists = prev.some(a => a.id === payload.new.id);
-            if (exists) {
-              console.log('⚠️ Duplicate announcement detected, skipping');
-              return prev;
-            }
-            console.log('✅ Adding new announcement to state');
-            return [payload.new as any, ...prev];
-          });
-          
-          toast({
-            title: '📢 New Announcement',
-            description: (payload.new as any).title,
-            duration: 5000,
-          });
-        }
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'announcements',
-        filter: `department_id=eq.${department.id}` // 🔥 Database filter
-      }, (payload) => {
-        console.log('📝 Announcement updated:', payload.new);
-        setAnnouncements(prev =>
-          prev.map(ann =>
-            ann.id === payload.new.id ? payload.new as any : ann
-          ).filter(a => a.is_active)
-        );
-      })
-      .on('postgres_changes', {
-        event: 'DELETE',
-        schema: 'public',
-        table: 'announcements',
-        filter: `department_id=eq.${department.id}` // 🔥 Database filter
-      }, (payload) => {
-        console.log('🗑️ Announcement deleted:', payload.old);
-        setAnnouncements(prev => prev.filter(ann => ann.id !== payload.old.id));
-      })
-      .subscribe((status) => {
-        console.log('📡 Announcements subscription status:', status);
-      });
-
-    console.log('✅ Realtime subscriptions active');
+    messageSubscriptionRef.current = subscription;
+    setRealtimeStatus('connecting');
+    console.log('✅ Realtime subscription active');
   };
 
   const loadStudentDepartment = async () => {
     try {
       setLoading(true);
 
-      const userId = studentData?.id || studentData?.user_id;
-      
       console.log('📋 Loading student department...');
       console.log('Student ID:', userId);
 
@@ -259,6 +303,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         // User is a class representative
         departmentId = classRepAssignment.context_id;
         console.log('✅ Found class representative assignment for department:', departmentId);
+        setIsClassRep(true);
       } else {
         // Student is not a class representative - no department access
         console.log('⚠️ Student is not a class representative');
@@ -283,10 +328,53 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
       console.log('✅ Department found:', deptData);
       setDepartment(deptData);
 
+      // Load department channel
+      const { data: channelList, error: channelError } = await supabase
+        .from('department_channels')
+        .select('*')
+        .eq('department_id', departmentId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (channelError) {
+        console.error('❌ Error fetching channels:', channelError);
+      } else if (channelList && channelList.length > 0) {
+        console.log('✅ Channels found:', channelList.length);
+        setSelectedChannel(channelList[0]);
+
+        // Fetch messages for the channel
+        const { data: msgs, error: msgError } = await supabase
+          .from('department_messages')
+          .select(`
+            *,
+            sender:user_profiles!department_messages_sender_id_fkey(
+              id,
+              first_name,
+              last_name,
+              profile_picture_url
+            )
+          `)
+          .eq('channel_id', channelList[0].id)
+          .order('created_at', { ascending: true });
+
+        if (msgError) {
+          console.error('❌ Error fetching messages:', msgError);
+        } else {
+          console.log('✅ Messages loaded:', msgs?.length || 0);
+          setMessages(msgs || []);
+        }
+      }
+
       // Load department events
       const { data: eventsData, error: eventsError } = await supabase
         .from('department_events')
-        .select('*')
+        .select(`
+          *,
+          creator:user_profiles!department_events_created_by_fkey(
+            first_name,
+            last_name
+          )
+        `)
         .eq('department_id', departmentId)
         .gte('end_datetime', new Date().toISOString())
         .order('start_datetime', { ascending: true });
@@ -323,8 +411,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
   };
 
   const checkClassRepStatus = async () => {
-    const userId = studentData?.id || studentData?.user_id;
-    
     if (!department?.id || !userId) {
       console.log('Missing department or student ID');
       setIsClassRep(false);
@@ -369,6 +455,12 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     }
   };
 
+  const scrollToBottom = () => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  };
+
   const getConnectionStatusIcon = () => {
     switch (realtimeStatus) {
       case 'connected':
@@ -382,78 +474,29 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     }
   };
 
-  const getFilteredEvents = () => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-
-    let filtered = events;
-
-    // Apply time filter
-    if (eventFilter === 'today') {
-      filtered = filtered.filter(event => {
-        const eventDate = new Date(event.start_date);
-        return eventDate.toDateString() === today.toDateString();
-      });
-    } else if (eventFilter === 'this-week') {
-      filtered = filtered.filter(event => {
-        const eventDate = new Date(event.start_date);
-        return eventDate >= today && eventDate <= weekFromNow;
-      });
-    } else if (eventFilter === 'upcoming') {
-      filtered = filtered.filter(event => {
-        const eventDate = new Date(event.start_date);
-        return eventDate >= today;
-      });
-    }
-
-    // Apply search filter
-    if (searchQuery) {
-      filtered = filtered.filter(event =>
-        event.event_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        event.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        event.location?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    return filtered;
+  const formatMessageTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString([], { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
   };
 
-  const getFilteredAnnouncements = () => {
-    if (!searchQuery) return announcements;
-    
-    return announcements.filter(ann =>
-      ann.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ann.content?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+  const getInitials = (firstName?: string, lastName?: string) => {
+    return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
   };
 
-  const formatEventDate = (startDate: string, endDate?: string) => {
-    const start = new Date(startDate);
-    const end = endDate ? new Date(endDate) : null;
-    
-    if (!end || start.toDateString() === end.toDateString()) {
-      return start.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        year: 'numeric' 
-      });
-    }
-    
-    return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
-  };
+  const filteredEvents = selectedDate
+    ? events.filter((event) => {
+        const eventDate = new Date(event.start_datetime);
+        return eventDate.toDateString() === selectedDate.toDateString();
+      })
+    : [];
 
-  const getEventTypeBadge = (type: string) => {
-    const badges = {
-      workshop: { variant: 'default' as const, color: 'bg-blue-500' },
-      seminar: { variant: 'secondary' as const, color: 'bg-purple-500' },
-      meeting: { variant: 'outline' as const, color: 'bg-gray-500' },
-      conference: { variant: 'default' as const, color: 'bg-green-500' },
-      default: { variant: 'default' as const, color: 'bg-gray-500' }
-    };
-    
-    return badges[type as keyof typeof badges] || badges.default;
-  };
+  const filteredMessages = messages.filter(msg =>
+    msg.message_text.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    msg.sender?.first_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    msg.sender?.last_name?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const getPriorityBadge = (priority: string) => {
     const badges = {
@@ -491,9 +534,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     );
   }
 
-  const filteredEvents = getFilteredEvents();
-  const filteredAnnouncements = getFilteredAnnouncements();
-
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Header */}
@@ -508,7 +548,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
                 {department.department_name}
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground">
-                {department.department_code} • {isClassRep ? 'Class Representative' : 'Student'} View
+                {department.department_code} • Class Representative View
               </p>
             </div>
           </div>
@@ -528,8 +568,8 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
             {/* Role Badge */}
             {isClassRep && (
-              <Badge variant="secondary" className="hidden sm:flex">
-                <Users className="w-3 h-3 mr-1" />
+              <Badge variant="secondary" className="hidden sm:flex bg-yellow-100 text-yellow-700 border-yellow-300">
+                <Crown className="w-3 h-3 mr-1" />
                 Class Rep
               </Badge>
             )}
@@ -544,38 +584,26 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         </div>
       )}
 
-      {/* Main Content */}
-      <div className="flex-1 overflow-hidden min-h-0">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          {/* Tab Navigation */}
-          <div className="border-b border-border bg-sidebar-background px-6 py-3 flex-shrink-0">
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Messages Area - Read Only */}
+        <div className="flex-1 flex flex-col min-h-0 bg-background">
+          {/* Chat Header */}
+          <div className="bg-sidebar-background border-b border-border px-6 py-4 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <TabsList>
-                <TabsTrigger value="events" className="relative">
-                  <CalendarDays className="w-4 h-4 mr-2" />
-                  Events
-                  {events.length > 0 && (
-                    <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                      {events.length}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="announcements" className="relative">
-                  <Bell className="w-4 h-4 mr-2" />
-                  Announcements
-                  {announcements.length > 0 && (
-                    <Badge variant="secondary" className="ml-2 h-5 px-1.5">
-                      {announcements.length}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-              </TabsList>
-
+              <div>
+                <h2 className="font-semibold text-foreground">
+                  {selectedChannel?.channel_name || "Department Messages"}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Read-only view • Faculty and admin discussions
+                </p>
+              </div>
+              
               {/* Search */}
               <div className="relative w-64 hidden md:block">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder={`Search ${activeTab}...`}
+                  placeholder="Search messages..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-10 bg-input border-border text-foreground"
@@ -584,205 +612,291 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
             </div>
           </div>
 
-          {/* Events Tab */}
-          <TabsContent value="events" className="flex-1 overflow-y-auto p-6 m-0">
-            {/* Event Filters */}
-            <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-              <Button 
-                variant={eventFilter === 'upcoming' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setEventFilter('upcoming')}
-              >
-                Upcoming
-              </Button>
-              <Button 
-                variant={eventFilter === 'today' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setEventFilter('today')}
-              >
-                Today
-              </Button>
-              <Button 
-                variant={eventFilter === 'this-week' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setEventFilter('this-week')}
-              >
-                This Week
-              </Button>
-              <Button 
-                variant={eventFilter === 'all' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setEventFilter('all')}
-              >
-                All
-              </Button>
+          {/* Pinned Messages */}
+          {messages.some((m) => m.is_pinned) && (
+            <div className="bg-accent/50 border-b border-border px-6 py-3 flex-shrink-0">
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <Pin className="h-4 w-4 text-blue-500" />
+                Pinned Messages
+              </h4>
+              <div className="space-y-1">
+                {messages
+                  .filter((m) => m.is_pinned)
+                  .map((m) => (
+                    <div 
+                      key={m.id} 
+                      className="text-sm bg-card p-2 rounded"
+                    >
+                      <span className="flex-1">
+                        <strong>
+                          {m.sender ? `${m.sender.first_name} ${m.sender.last_name}` : "Unknown"}:
+                        </strong>{" "}
+                        {m.message_text}
+                        {m.file_name && (
+                          <span className="text-xs text-blue-500 ml-1">
+                            📎 {m.file_name}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+              </div>
             </div>
+          )}
 
-            {filteredEvents.length === 0 ? (
-              <div className="flex items-center justify-center h-96">
+          {/* Messages - Read Only */}
+          <div 
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0"
+          >
+            {filteredMessages.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                  <Calendar className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <h3 className="text-lg font-semibold mb-2">
-                    {searchQuery ? 'No matching events' : 'No events scheduled'}
-                  </h3>
+                  <Building2 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-foreground/70">
+                    {searchQuery ? 'No matching messages' : 'No messages yet'}
+                  </p>
                   <p className="text-sm text-muted-foreground">
-                    {searchQuery 
-                      ? 'Try a different search term' 
-                      : 'Check back later for upcoming department events'}
+                    {searchQuery ? 'Try a different search term' : 'Check back later for updates'}
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredEvents.map((event) => (
-                  <Card 
-                    key={event.id} 
-                    className="hover:shadow-lg transition-all cursor-pointer border-l-4 hover:border-primary"
-                    style={{ borderLeftColor: getEventTypeBadge(event.event_type).color }}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-lg line-clamp-2">
+              <>
+                {filteredMessages.map((msg, index) => {
+                  const showAvatar = index === 0 || 
+                    filteredMessages[index - 1].sender_id !== msg.sender_id;
+                  
+                  return (
+                    <div 
+                      key={msg.id} 
+                      className="flex justify-start"
+                    >
+                      <div className="flex items-end space-x-2 max-w-[70%]">
+                        {showAvatar && (
+                          <div className="w-8 h-8 bg-primary/10 border border-border rounded-full flex items-center justify-center text-foreground text-xs font-semibold flex-shrink-0 mb-1">
+                            {getInitials(msg.sender?.first_name, msg.sender?.last_name)}
+                          </div>
+                        )}
+                        {!showAvatar && (
+                          <div className="w-8 h-8 flex-shrink-0"></div>
+                        )}
+                        
+                        <div className="flex-1 min-w-0">
+                          {showAvatar && (
+                            <p className="text-xs text-muted-foreground mb-1 ml-2">
+                              {msg.sender ? 
+                                `${msg.sender.first_name} ${msg.sender.last_name}` : 
+                                "Unknown"
+                              }
+                            </p>
+                          )}
+                          
+                          <div className="px-4 py-2 rounded-2xl bg-card border border-border text-foreground">
+                            <p className="text-sm break-words">{msg.message_text}</p>
+
+                            {msg.message_type === 'image' && msg.file_url && (
+                              <img 
+                                src={msg.file_url} 
+                                alt={msg.file_name || 'Shared image'} 
+                                className="mt-2 rounded-lg max-w-full max-h-64 object-cover cursor-pointer"
+                                onClick={() => window.open(msg.file_url!, '_blank')}
+                              />
+                            )}
+
+                            {msg.file_name && msg.file_url && msg.message_type !== 'image' && (
+                              <a 
+                                href={msg.file_url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-500 mt-2 flex items-center gap-1 hover:underline"
+                              >
+                                📎 {msg.file_name}
+                                {msg.file_size && 
+                                  ` (${(msg.file_size / 1024 / 1024).toFixed(2)} MB)`
+                                }
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center space-x-1 mt-1">
+                            <span className="text-xs text-muted-foreground">
+                              {formatMessageTime(msg.created_at)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </div>
+
+          {/* Read-only Notice */}
+          <div className="bg-accent/50 border-t border-border px-6 py-3 flex-shrink-0">
+            <div className="flex items-center gap-3 text-sm">
+              <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0" />
+              <p className="text-muted-foreground">
+                <strong className="text-foreground">Read-only access:</strong>{' '}
+                As a class representative, you can view department messages but cannot reply. 
+                For urgent matters, contact your HOD directly.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Calendar & Events Sidebar */}
+        <div className="w-96 min-w-[384px] max-w-[420px] border-l border-border bg-sidebar-background flex-shrink-0 overflow-y-auto hidden lg:flex flex-col">
+          <div className="p-6 space-y-4 flex-1">
+            {/* Calendar Card */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <CalendarDays className="h-5 w-5" /> Calendar
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={setSelectedDate}
+                  modifiers={{
+                    hasEvent: (date) =>
+                      events.some((e) => {
+                        const eventDate = new Date(e.start_datetime);
+                        return eventDate.toDateString() === date.toDateString();
+                      }),
+                  }}
+                  modifiersClassNames={{
+                    hasEvent:
+                      "relative after:content-['•'] after:text-blue-400 after:text-lg after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2",
+                  }}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Events Card */}
+            <Card className="flex-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Clock className="h-5 w-5" /> Event Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {!selectedDate ? (
+                  <p className="text-sm text-muted-foreground">
+                    Select a date to view events
+                  </p>
+                ) : filteredEvents.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No events on this date
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {filteredEvents.map((event) => (
+                      <div 
+                        key={event.id} 
+                        className="border-b border-border pb-3 last:border-0"
+                      >
+                        <h4 className="font-semibold text-sm mb-1">
                           {event.event_title}
-                        </CardTitle>
-                        <Badge variant={getEventTypeBadge(event.event_type).variant}>
+                        </h4>
+                        {event.event_description && (
+                          <p className="text-xs text-muted-foreground mb-2">
+                            {event.event_description}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {new Date(event.start_datetime).toLocaleTimeString([], { 
+                            hour: "2-digit", 
+                            minute: "2-digit" 
+                          })}
+                        </div>
+                        {event.location && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <MapPin className="h-3 w-3" />
+                            {event.location}
+                          </div>
+                        )}
+                        {event.max_participants && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <Users className="h-3 w-3" />
+                            Max: {event.max_participants} participants
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                          <User className="h-3 w-3" />
+                          {event.creator ? 
+                            `${event.creator.first_name} ${event.creator.last_name}` : 
+                            "Unknown"
+                          }
+                        </div>
+                        <Badge 
+                          variant="secondary" 
+                          className="mt-2 text-xs"
+                        >
                           {event.event_type}
                         </Badge>
                       </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {event.event_description && (
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {event.event_description}
-                        </p>
-                      )}
-                      
-                      <div className="space-y-2 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 flex-shrink-0" />
-                          <span className="truncate">
-                            {formatEventDate(event.start_datetime, event.end_datetime)}
-                          </span>
-                        </div>
-                        
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 flex-shrink-0" />
-                          <span>
-                            {new Date(event.start_datetime).toLocaleTimeString([], { 
-                              hour: '2-digit', 
-                              minute: '2-digit' 
-                            })}
-                          </span>
-                        </div>
-                        
-                        {event.location && (
-                          <div className="flex items-center gap-2">
-                            <MapPin className="w-4 h-4 flex-shrink-0" />
-                            <span className="truncate">{event.location}</span>
-                          </div>
-                        )}
-                        
-                        {event.max_participants && (
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4 flex-shrink-0" />
-                            <span>Max: {event.max_participants} participants</span>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-          {/* Announcements Tab */}
-          <TabsContent value="announcements" className="flex-1 overflow-y-auto p-6 m-0">
-            {filteredAnnouncements.length === 0 ? (
-              <div className="flex items-center justify-center h-96">
-                <div className="text-center">
-                  <Bell className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-50" />
-                  <h3 className="text-lg font-semibold mb-2">
-                    {searchQuery ? 'No matching announcements' : 'No announcements'}
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {searchQuery 
-                      ? 'Try a different search term' 
-                      : 'Check back later for department announcements'}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredAnnouncements.map((announcement) => (
-                  <Card 
-                    key={announcement.id} 
-                    className="hover:shadow-md transition-all"
-                  >
-                    <CardContent className="pt-6">
-                      <div className="space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <h3 className="font-semibold text-lg flex-1">
+            {/* Announcements Card */}
+            {announcements.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Bell className="h-5 w-5" /> Recent Announcements
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {announcements.slice(0, 3).map((announcement) => (
+                      <div 
+                        key={announcement.id} 
+                        className="border-b border-border pb-3 last:border-0"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <h4 className="font-semibold text-sm flex-1">
                             {announcement.title}
-                          </h3>
+                          </h4>
                           {announcement.priority && (
-                            <Badge variant={getPriorityBadge(announcement.priority)}>
+                            <Badge 
+                              variant={getPriorityBadge(announcement.priority)}
+                              className="text-xs"
+                            >
                               {announcement.priority}
                             </Badge>
                           )}
                         </div>
-                        
-                        <p className="text-sm text-muted-foreground leading-relaxed">
+                        <p className="text-xs text-muted-foreground line-clamp-2">
                           {announcement.content}
                         </p>
-                        
-                        <div className="flex items-center justify-between pt-2 border-t border-border">
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <Clock className="w-3 h-3" />
-                            <span>
-                              {new Date(announcement.created_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </span>
-                          </div>
-                          
-                          {announcement.link && (
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="h-auto p-0"
-                              onClick={() => window.open(announcement.link, '_blank')}
-                            >
-                              View Details
-                              <ExternalLink className="w-3 h-3 ml-1" />
-                            </Button>
-                          )}
-                        </div>
+                        {announcement.link && (
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="h-auto p-0 mt-1 text-xs"
+                            onClick={() => window.open(announcement.link, '_blank')}
+                          >
+                            View Details
+                            <ExternalLink className="w-3 h-3 ml-1" />
+                          </Button>
+                        )}
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             )}
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      {/* Info Banner */}
-      <div className="bg-accent/50 border-t border-border px-6 py-3 flex-shrink-0">
-        <div className="flex items-center gap-3 text-sm">
-          <AlertCircle className="w-5 h-5 text-muted-foreground flex-shrink-0" />
-          <p className="text-muted-foreground">
-            <strong className="text-foreground">
-              {isClassRep ? 'Class Representative Access:' : 'Student Access:'}
-            </strong>{' '}
-            You can view all department events and announcements. 
-            {isClassRep && ' For updates or concerns, contact your department HOD.'}
-          </p>
+          </div>
         </div>
       </div>
     </div>

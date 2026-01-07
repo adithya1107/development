@@ -215,52 +215,106 @@ const Student = () => {
         setIsLoadingFeatures(true);
         console.log('Loading features for student:', studentData.user_id);
         
-        // Load features from database
-        const features = await loadUserFeatures(studentData.college_id, 'student');
-        
-        if (features.length === 0) {
+        // FIXED: Use .contains() for array filtering instead of .eq() with object literal
+        const { data: configData, error: configError } = await supabase
+          .from('feature_configurations')
+          .select('*')
+          .eq('college_id', studentData.college_id)
+          .contains('target_user_types', ['student'])
+          .eq('is_enabled', true)
+          .order('display_order', { ascending: true });
+
+        if (configError) {
+          console.error('Config error:', configError);
+          throw configError;
+        }
+
+        if (!configData || configData.length === 0) {
           console.warn('No features configured, using defaults');
           setSidebarItems(getDefaultStudentFeatures());
           setAvailableFeatureKeys(new Set(['dashboard', 'schedule', 'attendance', 'courses', 'communication', 'support']));
         } else {
-          // Convert features to sidebar items
-          const items = featuresToSidebarItems(features);
-          
-          // Add club feature if user has club tags
-          const hasClubAccess = hasAnyTag(['club_president', 'club_member', 'club_secretary', 'club_treasurer']);
-          if (hasClubAccess) {
-            const clubFeature = features.find(f => f.feature_key === 'clubs');
-            if (clubFeature && !items.find(i => i.id === 'clubs')) {
+          // Load feature definitions for the configured features
+          const featureIds = configData.map(c => c.feature_id);
+          const { data: definitionsData, error: defError } = await supabase
+            .from('feature_definitions')
+            .select('*')
+            .in('id', featureIds);
+
+          if (defError) {
+            console.error('Definitions error:', defError);
+            throw defError;
+          }
+
+          // Create a map for quick lookup
+          const definitionsMap = {};
+          (definitionsData || []).forEach(def => {
+            definitionsMap[def.id] = def;
+          });
+
+          // Import all lucide-react icons dynamically
+          const iconMap = {
+            GraduationCap, Clock, Calendar, BookOpen, Sparkle, FileText, TrendingUp,
+            Bell, Building2Icon, Briefcase, Users, ShoppingBag, Sun, MessageSquare,
+            Mail, Building, HelpCircle
+          };
+
+          // Convert features to sidebar items with icons from feature_definition
+          const items = configData.map((config) => {
+            const definition = definitionsMap[config.feature_id];
+            const iconName = definition?.icon_name || 'GraduationCap';
+            const IconComponent = iconMap[iconName] || GraduationCap;
+            
+            return {
+              id: definition?.feature_key || config.feature_id,
+              label: definition?.feature_name || config.feature_id,
+              icon: IconComponent,
+              enabled: config.is_enabled,
+              order: config.display_order
+            };
+          });
+
+          // Check if user has any tags with context_name 'club'
+          const hasClubTags = userTags.some(tag => tag.context_name === 'club');
+          if (hasClubTags) {
+            // Check if clubs feature exists in definitions
+            const clubDefinition = definitionsData?.find(d => d.feature_key === 'clubs');
+            const clubConfig = configData.find(c => c.feature_id === clubDefinition?.id);
+            
+            if (clubDefinition && clubConfig && !items.find(i => i.id === 'clubs')) {
+              const iconName = clubDefinition.icon_name || 'Users';
               items.push({
                 id: 'clubs',
-                label: 'Club Activities',
-                icon: Users,
+                label: clubDefinition.feature_name || 'Club Activities',
+                icon: iconMap[iconName] || Users,
                 enabled: true,
-                order: items.length
+                order: clubConfig.display_order || items.length
               });
             }
           }
 
-          // Add department feature if user is class representative
-          const hasDepartmentAccess = hasTag('class_representative');
-          if (hasDepartmentAccess) {
-            const deptFeature = features.find(f => f.feature_key === 'department');
-            if (deptFeature && !items.find(i => i.id === 'department')) {
+          // Check if user has any tags with context_name 'department'
+          const hasDepartmentTags = userTags.some(tag => tag.context_name === 'department');
+          if (hasDepartmentTags) {
+            // Check if department feature exists in definitions
+            const deptDefinition = definitionsData?.find(d => d.feature_key === 'department');
+            const deptConfig = configData.find(c => c.feature_id === deptDefinition?.id);
+            
+            if (deptDefinition && deptConfig && !items.find(i => i.id === 'department')) {
+              const iconName = deptDefinition.icon_name || 'Building';
               items.push({
                 id: 'department',
-                label: 'Department',
-                icon: Building,
+                label: deptDefinition.feature_name || 'Department',
+                icon: iconMap[iconName] || Building,
                 enabled: true,
-                order: items.length
+                order: deptConfig.display_order || items.length
               });
             }
           }
           
           setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
           
-          const featureKeys = new Set(features.map(f => f.feature_key));
-          if (hasClubAccess) featureKeys.add('clubs');
-          if (hasDepartmentAccess) featureKeys.add('department');
+          const featureKeys = new Set(items.map(i => i.id));
           setAvailableFeatureKeys(featureKeys);
           
           console.log(`Loaded ${items.length} features for student`);
@@ -278,7 +332,7 @@ const Student = () => {
       }
     };
 
-    if (studentData?.college_id) {
+    if (studentData?.college_id && !tagsLoading) {
       loadDynamicFeatures();
     }
   }, [studentData?.college_id, userTags, tagsLoading]);

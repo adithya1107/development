@@ -1,8 +1,23 @@
-﻿import React, { useState, useRef, useEffect } from "react";
+﻿/**
+ * TeacherDepartment Component
+ * 
+ * Department-based communication platform with tag-based role management:
+ * 
+ * Tag Assignments with Context:
+ * - hod: Stored directly in departments.hod_id (not a tag)
+ * - department_admin: For faculty admins with context_type='department' and context_id=[department_id]
+ * - department_member: For faculty members with context_type='department' and context_id=[department_id]
+ * - class_representative: For student CRs with context_type='department' and context_id=[department_id]
+ * 
+ * All role assignments use generic tags with context to scope them to specific departments.
+ */
+
+import React, { useState, useRef, useEffect } from "react";
 import { 
   CalendarDays, Clock, User, Paperclip, Send, Image as ImageIcon, 
   Pin, Loader2, Building2, Search, ArrowLeft, Wifi, WifiOff, 
-  AlertCircle, CheckCheck, X, Download, ExternalLink 
+  AlertCircle, CheckCheck, X, Download, ExternalLink, Users, UserPlus,
+  UserMinus, Shield, Crown
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
@@ -12,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/use-toast";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -19,23 +35,63 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import EventCreationForm from "./EventCreationForm";
-import {
-  getUserDepartments,
-  getDepartmentChannels,
-  getChannelMessages,
-  sendMessage,
-  uploadDepartmentFile,
-  togglePinMessage,
-  getDepartmentEvents,
-  createDepartmentEvent,
-  subscribeToMessages,
-  type DepartmentMessage,
-  type DepartmentEvent,
-  type Department,
-  type DepartmentChannel,
-} from "@/services/departmentService";
 import { supabase } from '@/integrations/supabase/client';
+import EventCreationForm from "./EventCreationForm";
+
+interface DepartmentMessage {
+  id: string;
+  channel_id: string;
+  sender_id: string;
+  message_text: string;
+  message_type: string;
+  file_url: string | null;
+  file_name: string | null;
+  file_size: number | null;
+  is_pinned: boolean;
+  created_at: string;
+  sender?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    profile_picture_url: string | null;
+  };
+}
+
+interface DepartmentEvent {
+  id: string;
+  department_id: string;
+  event_title: string;
+  event_description: string;
+  event_type: string;
+  start_datetime: string;
+  end_datetime: string;
+  location: string | null;
+  is_all_day: boolean;
+  created_by: string;
+  created_at: string;
+  creator?: {
+    first_name: string;
+    last_name: string;
+  };
+}
+
+interface Department {
+  id: string;
+  department_name: string;
+  department_code: string;
+  department_color: string;
+  college_id: string;
+  is_active: boolean;
+}
+
+interface DepartmentChannel {
+  id: string;
+  department_id: string;
+  channel_name: string;
+  channel_description: string | null;
+  is_active: boolean;
+  created_at: string;
+}
 
 
 interface TeacherDepartmentProps {
@@ -61,6 +117,16 @@ const TeacherDepartment = ({
   const [events, setEvents] = useState<DepartmentEvent[]>([]);
   const [userRole, setUserRole] = useState<'hod' | 'admin' | 'member' | null>(null);
 
+  // Member management states
+  const [showMembersDialog, setShowMembersDialog] = useState(false);
+  const [departmentMembers, setDepartmentMembers] = useState<any[]>([]);
+  const [classRepresentatives, setClassRepresentatives] = useState<any[]>([]);
+  const [availableFaculty, setAvailableFaculty] = useState<any[]>([]);
+  const [availableStudents, setAvailableStudents] = useState<any[]>([]);
+  const [memberSearchTerm, setMemberSearchTerm] = useState("");
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [activeTab, setActiveTab] = useState<'faculty' | 'students'>('faculty');
+
   const [newMessage, setNewMessage] = useState("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [sending, setSending] = useState(false);
@@ -72,7 +138,8 @@ const TeacherDepartment = ({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const selectedChannelIdRef = useRef<string | null>(null); // 🔥 KEY FIX: Track selected channel reliably
+  const selectedChannelIdRef = useRef<string | null>(null);
+  const messageSubscriptionRef = useRef<any>(null);
 
   const userId = teacherData?.id || teacherData?.user_id;
 
@@ -90,7 +157,6 @@ const TeacherDepartment = ({
     }
   }, [department?.id]);
 
-  // 🔥 KEY FIX: Update ref whenever selectedChannel changes
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannel?.id || null;
     console.log('📌 Selected channel ref updated:', selectedChannelIdRef.current);
@@ -100,41 +166,103 @@ const TeacherDepartment = ({
     if (!selectedChannel) return;
 
     console.log('📡 Setting up realtime subscription for channel:', selectedChannel.id);
+    
+    // Clean up any existing subscription first
+    const cleanup = () => {
+      if (messageSubscriptionRef.current) {
+        console.log('🧹 Cleaning up old subscription');
+        supabase.removeChannel(messageSubscriptionRef.current);
+        messageSubscriptionRef.current = null;
+      }
+    };
+    
+    cleanup();
 
-    const subscription = subscribeToMessages(selectedChannel.id, (newMsg) => {
-      console.log('📨 Real-time message received:', {
-        id: newMsg.id,
-        channel_id: newMsg.channel_id,
-        current_channel: selectedChannelIdRef.current,
-        matches: newMsg.channel_id === selectedChannelIdRef.current
-      });
-      
-      // 🔥 KEY FIX: Use ref instead of state to check channel match
-      if (newMsg.channel_id === selectedChannelIdRef.current) {
-        console.log('✅ Message is for current channel, adding to messages');
-        
-        setMessages((prev) => {
-          const exists = prev.some(msg => msg.id === newMsg.id);
-          if (exists) {
-            console.log('⚠️ Duplicate message detected, replacing');
-            return prev.map(msg => msg.id === newMsg.id ? newMsg : msg);
-          }
-          console.log('✅ Adding new message to state');
-          return [...prev, newMsg];
+    // Create new subscription with unique channel name
+    const channelName = `department-messages-${selectedChannel.id}-${Date.now()}`;
+    const subscription = supabase
+      .channel(channelName)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'department_messages' // 🔥 CORRECT TABLE NAME
+      }, async (payload) => {
+        console.log('📨 Real-time message INSERT received:', {
+          id: payload.new.id,
+          channel_id: payload.new.channel_id,
+          current_channel: selectedChannelIdRef.current,
+          matches: payload.new.channel_id === selectedChannelIdRef.current
         });
         
-        setTimeout(scrollToBottom, 100);
-      } else {
-        console.log('⏭️ Message is for different channel, ignoring');
-      }
-    });
+        // 🔥 KEY FIX: Use ref instead of state to check channel match
+        if (payload.new.channel_id === selectedChannelIdRef.current) {
+          console.log('✅ Message is for current channel, fetching full data');
+          
+          // Fetch full message data with sender info
+          const { data: fullMessage } = await supabase
+            .from('department_messages')
+            .select(`
+              *,
+              sender:user_profiles!department_messages_sender_id_fkey(
+                id,
+                first_name,
+                last_name,
+                profile_picture_url
+              )
+            `)
+            .eq('id', payload.new.id)
+            .single();
 
-    setRealtimeStatus('connected');
+          if (fullMessage) {
+            setMessages((prev) => {
+              const exists = prev.some(msg => msg.id === fullMessage.id);
+              if (exists) {
+                console.log('⚠️ Duplicate message detected, replacing');
+                return prev.map(msg => msg.id === fullMessage.id ? fullMessage : msg);
+              }
+              console.log('✅ Adding new message to state');
+              return [...prev, fullMessage];
+            });
+            
+            setTimeout(scrollToBottom, 100);
+          }
+        } else {
+          console.log('⏭️ Message is for different channel, ignoring');
+        }
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'department_messages'
+      }, (payload) => {
+        if (payload.new.channel_id === selectedChannelIdRef.current) {
+          console.log('📝 Message updated:', payload.new.id);
+          setMessages(prev =>
+            prev.map(msg => msg.id === payload.new.id ? { ...msg, ...payload.new } : msg)
+          );
+        }
+      })
+      .subscribe((status) => {
+        console.log('📡 Subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          setRealtimeStatus('connected');
+          console.log('✅ Successfully subscribed to department messages');
+        } else if (status === 'CHANNEL_ERROR') {
+          setRealtimeStatus('error');
+          console.error('❌ Channel subscription error');
+        } else if (status === 'TIMED_OUT') {
+          setRealtimeStatus('disconnected');
+          console.warn('⏱️ Subscription timed out');
+        }
+      });
+
+    messageSubscriptionRef.current = subscription;
+    setRealtimeStatus('connecting');
     console.log('✅ Realtime subscription active');
 
     return () => {
-      console.log('🧹 Cleaning up subscription');
-      subscription.unsubscribe();
+      console.log('🧹 Cleaning up subscription on unmount/channel change');
+      cleanup();
       setRealtimeStatus('disconnected');
     };
   }, [selectedChannel?.id]);
@@ -148,22 +276,103 @@ const TeacherDepartment = ({
       setLoading(true);
       console.log('📋 Loading all departments for user:', userId);
       
-      const depts = await getUserDepartments(userId);
-      console.log('✅ Departments found:', depts.length);
+      // Method 1: Check if user is HOD of any department (via tag system)
+      const { data: hodTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'hod')
+        .single();
+
+      let hodDepartments: Department[] = [];
+      if (hodTag) {
+        const { data: hodAssignments } = await supabase
+          .from('user_tag_assignments')
+          .select('context_id')
+          .eq('tag_id', hodTag.id)
+          .eq('context_type', 'department')
+          .eq('user_id', userId)
+          .eq('is_active', true);
+
+        if (hodAssignments && hodAssignments.length > 0) {
+          const deptIds = hodAssignments.map(a => a.context_id);
+          const { data: depts } = await supabase
+            .from('departments')
+            .select('*')
+            .in('id', deptIds)
+            .eq('is_active', true);
+          
+          if (depts) {
+            hodDepartments = depts;
+            console.log('✅ Found HOD departments:', hodDepartments.length);
+          }
+        }
+      }
+
+      // Method 2: Check if user is department_member or department_admin
+      const { data: memberTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'department_member')
+        .single();
+
+      const { data: adminTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'department_admin')
+        .single();
+
+      let memberDepartments: Department[] = [];
+      const tagIds = [memberTag?.id, adminTag?.id].filter(Boolean);
       
-      if (depts.length === 0) {
+      if (tagIds.length > 0) {
+        const { data: memberAssignments } = await supabase
+          .from('user_tag_assignments')
+          .select('context_id')
+          .in('tag_id', tagIds)
+          .eq('context_type', 'department')
+          .eq('user_id', userId)
+          .eq('is_active', true);
+
+        if (memberAssignments && memberAssignments.length > 0) {
+          const deptIds = memberAssignments.map(a => a.context_id);
+          const { data: depts } = await supabase
+            .from('departments')
+            .select('*')
+            .in('id', deptIds)
+            .eq('is_active', true);
+          
+          if (depts) {
+            memberDepartments = depts;
+            console.log('✅ Found member/admin departments:', memberDepartments.length);
+          }
+        }
+      }
+
+      // Combine and deduplicate departments
+      const allDepartmentIds = new Set([
+        ...hodDepartments.map(d => d.id),
+        ...memberDepartments.map(d => d.id)
+      ]);
+
+      const allDepartments = [...hodDepartments, ...memberDepartments].filter((dept, index, self) => 
+        index === self.findIndex(d => d.id === dept.id)
+      );
+
+      console.log('✅ Total unique departments found:', allDepartments.length);
+      
+      if (allDepartments.length === 0) {
         console.log('⚠️ No departments found for user');
         toast({
           title: "No Department",
-          description: "You are not assigned to any department yet.",
+          description: "You are not assigned to any department yet. Please contact your administrator.",
           variant: "destructive",
         });
         setLoading(false);
         return;
       }
 
-      setDepartments(depts);
-      setDepartment(depts[0]);
+      setDepartments(allDepartments);
+      setDepartment(allDepartments[0]);
     } catch (error) {
       console.error("❌ Error loading departments:", error);
       toast({
@@ -179,48 +388,65 @@ const TeacherDepartment = ({
     if (!userId) return;
 
     try {
-      // First check if user is HOD (stored directly in departments table)
+      // First check if user is HOD
       const { data: deptData } = await supabase
         .from('departments')
         .select('hod_id')
         .eq('id', departmentId)
         .single();
 
-      if (deptData?.hod_id === userId) {
-        setUserRole('hod');
-        console.log('✅ User is HOD of this department');
-        return;
-      }
-
-      // Then check for admin/member tags with context
-      const { data: roleData, error } = await supabase
-        .from('user_tag_assignments')
-        .select(`
-          user_tags!inner (
-            tag_name
-          )
-        `)
-        .eq('user_id', userId)
-        .eq('context_type', 'department')
-        .eq('context_id', departmentId)
-        .eq('is_active', true)
+      // Get HOD from tag assignments
+      const { data: hodTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'hod')
         .single();
 
-      if (error) {
-        console.log('No role tag found, setting as member');
-        setUserRole('member');
-        return;
+      if (hodTag) {
+        const { data: hodAssignment } = await supabase
+          .from('user_tag_assignments')
+          .select('user_id')
+          .eq('tag_id', hodTag.id)
+          .eq('context_type', 'department')
+          .eq('context_id', departmentId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (hodAssignment && hodAssignment.user_id === userId) {
+          setUserRole('hod');
+          console.log('✅ User is HOD of this department');
+          return;
+        }
       }
 
-      if (roleData.user_tags.tag_name === 'department_admin') {
-        setUserRole('admin');
-        console.log('✅ User is Admin of this department');
-      } else if (roleData.user_tags.tag_name === 'department_member') {
-        setUserRole('member');
-        console.log('✅ User is Member of this department');
-      } else {
-        setUserRole('member');
+      // Check for admin role
+      const { data: adminTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'department_admin')
+        .single();
+
+      if (adminTag) {
+        const { data: adminAssignment } = await supabase
+          .from('user_tag_assignments')
+          .select('user_id')
+          .eq('tag_id', adminTag.id)
+          .eq('context_type', 'department')
+          .eq('context_id', departmentId)
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (adminAssignment) {
+          setUserRole('admin');
+          console.log('✅ User is Admin of this department');
+          return;
+        }
       }
+
+      // Default to member
+      setUserRole('member');
+      console.log('✅ User is Member of this department');
     } catch (error) {
       console.log('Error checking user role:', error);
       setUserRole('member');
@@ -232,20 +458,112 @@ const TeacherDepartment = ({
       setLoading(true);
       console.log('📋 Loading data for department:', departmentId);
 
-      const channelList = await getDepartmentChannels(departmentId);
-      console.log('✅ Channels found:', channelList.length);
-      setChannels(channelList);
-      
-      if (channelList.length > 0) {
-        setSelectedChannel(channelList[0]);
-        const msgs = await getChannelMessages(channelList[0].id);
-        console.log('✅ Messages found:', msgs.length);
-        setMessages(msgs);
+      // Fetch channels directly
+      console.log('🔍 Fetching channels from department_channels table...');
+      const { data: channelList, error: channelError } = await supabase
+        .from('department_channels')
+        .select('*')
+        .eq('department_id', departmentId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (channelError) {
+        console.error('❌ Error fetching channels:', channelError);
+        throw channelError;
       }
 
-      const eventList = await getDepartmentEvents(departmentId);
-      console.log('✅ Events found:', eventList.length);
-      setEvents(eventList);
+      console.log('✅ Channels query result:', {
+        count: channelList?.length || 0,
+        channels: channelList
+      });
+      
+      setChannels(channelList || []);
+      
+      if (channelList && channelList.length > 0) {
+        console.log('📌 Setting selected channel to:', channelList[0]);
+        setSelectedChannel(channelList[0]);
+        
+        // Fetch messages directly
+        console.log('🔍 Fetching messages for channel:', channelList[0].id);
+        const { data: msgs, error: msgError } = await supabase
+          .from('department_messages')
+          .select(`
+            *,
+            sender:user_profiles!department_messages_sender_id_fkey(
+              id,
+              first_name,
+              last_name,
+              profile_picture_url
+            )
+          `)
+          .eq('channel_id', channelList[0].id)
+          .order('created_at', { ascending: true });
+
+        if (msgError) {
+          console.error('❌ Error fetching messages:', msgError);
+          throw msgError;
+        }
+
+        console.log('✅ Messages found:', msgs?.length || 0);
+        setMessages(msgs || []);
+      } else {
+        console.warn('⚠️ No channels found for this department');
+        console.log('🔧 Creating default "General" channel...');
+        
+        // Auto-create a default channel
+        const { data: newChannel, error: createError } = await supabase
+          .from('department_channels')
+          .insert({
+            department_id: departmentId,
+            channel_name: 'General',
+            channel_description: 'General department discussion',
+            is_active: true,
+            created_by: userId
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('❌ Error creating default channel:', createError);
+          toast({
+            title: "No Channels",
+            description: "No communication channels found. Please contact administrator.",
+            variant: "destructive",
+          });
+        } else {
+          console.log('✅ Default channel created:', newChannel);
+          setChannels([newChannel]);
+          setSelectedChannel(newChannel);
+          setMessages([]);
+          
+          toast({
+            title: "Channel Created",
+            description: "General channel created for department communication",
+          });
+        }
+      }
+
+      // Fetch events directly
+      console.log('🔍 Fetching events...');
+      const { data: eventList, error: eventError } = await supabase
+        .from('department_events')
+        .select(`
+          *,
+          creator:user_profiles!department_events_created_by_fkey(
+            first_name,
+            last_name
+          )
+        `)
+        .eq('department_id', departmentId)
+        .order('start_datetime', { ascending: true });
+
+      if (eventError) {
+        console.error('❌ Error fetching events:', eventError);
+        throw eventError;
+      }
+
+      console.log('✅ Events found:', eventList?.length || 0);
+      setEvents(eventList || []);
     } catch (error) {
       console.error("❌ Error loading department data:", error);
       toast({
@@ -255,6 +573,271 @@ const TeacherDepartment = ({
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDepartmentMembers = async () => {
+    if (!department) return;
+
+    setLoadingMembers(true);
+    try {
+      console.log('👥 Loading department members for:', department.id);
+
+      // Get department_member tag
+      const { data: memberTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'department_member')
+        .single();
+
+      if (!memberTag) {
+        console.error('department_member tag not found');
+        setDepartmentMembers([]);
+      } else {
+        // Fetch all faculty members in this department
+        const { data: members, error: membersError } = await supabase
+          .from('user_tag_assignments')
+          .select(`
+            id,
+            user_id,
+            assigned_at,
+            user_profiles!user_tag_assignments_user_id_fkey (
+              id,
+              first_name,
+              last_name,
+              email,
+              user_code,
+              user_type
+            )
+          `)
+          .eq('tag_id', memberTag.id)
+          .eq('context_type', 'department')
+          .eq('context_id', department.id)
+          .eq('is_active', true);
+
+        if (membersError) throw membersError;
+        setDepartmentMembers(members || []);
+
+        // Get available faculty (not yet members)
+        const { data: allFaculty, error: facultyError } = await supabase
+          .from('user_profiles')
+          .select('id, first_name, last_name, email, user_code')
+          .eq('college_id', teacherData.college_id)
+          .eq('user_type', 'faculty')
+          .eq('is_active', true);
+
+        if (facultyError) throw facultyError;
+
+        const memberIds = members?.map(m => m.user_profiles.id) || [];
+        setAvailableFaculty(allFaculty?.filter(f => !memberIds.includes(f.id)) || []);
+      }
+
+      // Get class_representative tag
+      const { data: crTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'class_representative')
+        .single();
+
+      if (!crTag) {
+        console.error('class_representative tag not found');
+        setClassRepresentatives([]);
+      } else {
+        // Fetch all class representatives in this department
+        const { data: crs, error: crsError } = await supabase
+          .from('user_tag_assignments')
+          .select(`
+            id,
+            user_id,
+            assigned_at,
+            user_profiles!user_tag_assignments_user_id_fkey (
+              id,
+              first_name,
+              last_name,
+              email,
+              user_code,
+              user_type
+            )
+          `)
+          .eq('tag_id', crTag.id)
+          .eq('context_type', 'department')
+          .eq('context_id', department.id)
+          .eq('is_active', true);
+
+        if (crsError) throw crsError;
+        setClassRepresentatives(crs || []);
+
+        // Get available students (not yet CRs)
+        const { data: allStudents, error: studentsError } = await supabase
+          .from('user_profiles')
+          .select('id, first_name, last_name, email, user_code')
+          .eq('college_id', teacherData.college_id)
+          .eq('user_type', 'student')
+          .eq('is_active', true);
+
+        if (studentsError) throw studentsError;
+
+        const crIds = crs?.map(cr => cr.user_profiles.id) || [];
+        setAvailableStudents(allStudents?.filter(s => !crIds.includes(s.id)) || []);
+      }
+
+      console.log('✅ Members loaded:', {
+        faculty: departmentMembers.length,
+        crs: classRepresentatives.length
+      });
+    } catch (error) {
+      console.error('❌ Error loading members:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load department members",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingMembers(false);
+    }
+  };
+
+  const addDepartmentMember = async (facultyId: string) => {
+    if (!department) return;
+
+    try {
+      const { data: memberTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'department_member')
+        .single();
+
+      if (!memberTag) {
+        toast({
+          title: "Error",
+          description: "department_member tag not found",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('user_tag_assignments')
+        .insert({
+          user_id: facultyId,
+          tag_id: memberTag.id,
+          context_type: 'department',
+          context_id: department.id,
+          assigned_by: userId
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Faculty member added to department",
+      });
+
+      await loadDepartmentMembers();
+    } catch (error) {
+      console.error('Error adding member:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add member",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const removeDepartmentMember = async (assignmentId: string, memberName: string) => {
+    try {
+      const { error } = await supabase
+        .from('user_tag_assignments')
+        .update({ is_active: false })
+        .eq('id', assignmentId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${memberName} removed from department`,
+      });
+
+      await loadDepartmentMembers();
+    } catch (error) {
+      console.error('Error removing member:', error);
+      toast({
+        title: "Error",
+        description: "Failed to remove member",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const addClassRepresentative = async (studentId: string) => {
+    if (!department) return;
+
+    try {
+      const { data: crTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'class_representative')
+        .single();
+
+      if (!crTag) {
+        toast({
+          title: "Error",
+          description: "class_representative tag not found",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('user_tag_assignments')
+        .insert({
+          user_id: studentId,
+          tag_id: crTag.id,
+          context_type: 'department',
+          context_id: department.id,
+          assigned_by: userId
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Class representative added to department",
+      });
+
+      await loadDepartmentMembers();
+    } catch (error) {
+      console.error('Error adding CR:', error);
+      toast({
+        title: "Error",
+        description: "Failed to add class representative",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const removeClassRepresentative = async (assignmentId: string, crName: string) => {
+    try {
+      const { error } = await supabase
+        .from('user_tag_assignments')
+        .update({ is_active: false })
+        .eq('id', assignmentId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${crName} removed as class representative`,
+      });
+
+      await loadDepartmentMembers();
+    } catch (error) {
+      console.error('Error removing CR:', error);
+      toast({
+        title: "Error",
+        description: "Failed to remove class representative",
+        variant: "destructive",
+      });
     }
   };
 
@@ -287,17 +870,53 @@ const TeacherDepartment = ({
     msg.sender?.last_name?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const filteredAvailableFaculty = availableFaculty.filter(faculty =>
+    `${faculty.first_name} ${faculty.last_name}`.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+    faculty.user_code.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+    faculty.email.toLowerCase().includes(memberSearchTerm.toLowerCase())
+  );
+
+  const filteredAvailableStudents = availableStudents.filter(student =>
+    `${student.first_name} ${student.last_name}`.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+    student.user_code.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+    student.email.toLowerCase().includes(memberSearchTerm.toLowerCase())
+  );
+
   const handleSend = async () => {
-    if (!newMessage.trim() && !attachedFile) return;
-    if (!selectedChannel) return;
-    if (!userId) return;
+    console.log('🔵 handleSend called', {
+      newMessage: newMessage,
+      newMessageTrim: newMessage.trim(),
+      attachedFile: !!attachedFile,
+      selectedChannel: !!selectedChannel,
+      userId: userId
+    });
+
+    if (!newMessage.trim() && !attachedFile) {
+      console.log('❌ No message or file to send');
+      return;
+    }
+    if (!selectedChannel) {
+      console.log('❌ No channel selected');
+      return;
+    }
+    if (!userId) {
+      console.log('❌ No userId');
+      return;
+    }
 
     const messageText = newMessage.trim();
     const tempId = `temp-${Date.now()}`;
 
+    console.log('📤 Sending message:', {
+      channel_id: selectedChannel.id,
+      text: messageText.substring(0, 30),
+      hasFile: !!attachedFile
+    });
+
     // Optimistic UI update
-    const optimisticMessage: DepartmentMessage = {
+    const optimisticMessage = {
       id: tempId,
+      tempId: tempId,
       channel_id: selectedChannel.id,
       sender_id: userId,
       message_text: messageText || (attachedFile ? `Shared ${attachedFile.name}` : ''),
@@ -314,9 +933,9 @@ const TeacherDepartment = ({
         profile_picture_url: teacherData?.profile_picture_url || null
       },
       sending: true
-    } as any;
+    };
 
-    setMessages(prev => [...prev, optimisticMessage]);
+    setMessages(prev => [...prev, optimisticMessage as any]);
     setNewMessage("");
     const fileToUpload = attachedFile;
     setAttachedFile(null);
@@ -324,31 +943,39 @@ const TeacherDepartment = ({
     setTimeout(scrollToBottom, 50);
 
     try {
-      console.log('📤 Sending message:', { 
-        channelId: selectedChannel.id, 
-        userId, 
-        message: messageText, 
-        hasFile: !!fileToUpload 
-      });
-      
       let fileUrl: string | undefined;
       let finalFileName: string | undefined;
       let finalFileSize: number | undefined;
 
+      // Handle file upload if present
       if (fileToUpload) {
         console.log('📎 Uploading file:', fileToUpload.name);
-        const uploadResult = await uploadDepartmentFile(fileToUpload, selectedChannel.id, userId);
         
-        if (!uploadResult) {
+        // Upload to Supabase Storage
+        const fileExt = fileToUpload.name.split('.').pop();
+        const filePath = `department-files/${selectedChannel.id}/${Date.now()}.${fileExt}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('department-files')
+          .upload(filePath, fileToUpload);
+
+        if (uploadError) {
+          console.error('File upload error:', uploadError);
           throw new Error('File upload failed');
         }
 
-        fileUrl = uploadResult.url;
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('department-files')
+          .getPublicUrl(filePath);
+
+        fileUrl = urlData.publicUrl;
         finalFileName = fileToUpload.name;
         finalFileSize = fileToUpload.size;
-        console.log('✅ File uploaded successfully');
+        console.log('✅ File uploaded successfully:', fileUrl);
       }
 
+      // Determine message type
       let messageType = 'text';
       if (fileToUpload) {
         if (fileToUpload.type.startsWith('image/')) {
@@ -364,22 +991,38 @@ const TeacherDepartment = ({
         }
       }
 
-      const msg = await sendMessage(
-        selectedChannel.id,
-        userId,
-        messageText || (fileToUpload ? `Shared ${fileToUpload.name}` : ''),
-        messageType,
-        fileUrl,
-        finalFileName,
-        finalFileSize
-      );
+      // Insert message into database
+      const { data: msg, error: msgError } = await supabase
+        .from('department_messages')
+        .insert({
+          channel_id: selectedChannel.id,
+          sender_id: userId,
+          message_text: messageText || (fileToUpload ? `Shared ${fileToUpload.name}` : ''),
+          message_type: messageType,
+          file_url: fileUrl || null,
+          file_name: finalFileName || null,
+          file_size: finalFileSize || null,
+          is_pinned: false
+        })
+        .select(`
+          *,
+          sender:user_profiles!department_messages_sender_id_fkey(
+            id,
+            first_name,
+            last_name,
+            profile_picture_url
+          )
+        `)
+        .single();
 
-      console.log('✅ Message sent successfully:', msg);
+      if (msgError) throw msgError;
+
+      console.log('✅ Message sent successfully:', msg.id);
 
       if (msg) {
         // Replace optimistic message with real one
         setMessages(prev =>
-          prev.map(m => m.id === tempId ? { ...msg, sending: false } : m)
+          prev.map(m => (m as any).tempId === tempId ? { ...msg, sending: false } : m)
         );
         
         toast({
@@ -393,13 +1036,13 @@ const TeacherDepartment = ({
       console.error("❌ Error sending message:", error);
       
       // Remove failed message and restore text
-      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setMessages(prev => prev.filter(m => (m as any).tempId !== tempId));
       setNewMessage(messageText);
       if (fileToUpload) setAttachedFile(fileToUpload);
       
       toast({
         title: "Failed to send",
-        description: "Check your connection and try again",
+        description: error instanceof Error ? error.message : "Check your connection and try again",
         variant: "destructive",
       });
     } finally {
@@ -421,7 +1064,6 @@ const TeacherDepartment = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check file size (50MB limit)
       if (file.size > 50 * 1024 * 1024) {
         toast({
           title: "File too large",
@@ -446,8 +1088,18 @@ const TeacherDepartment = ({
 
     if (!userId) return;
 
-    const success = await togglePinMessage(messageId, userId, !isPinned);
-    if (success) {
+    try {
+      const { error } = await supabase
+        .from('department_channel_messages')
+        .update({ 
+          is_pinned: !isPinned,
+          pinned_by: !isPinned ? userId : null,
+          pinned_at: !isPinned ? new Date().toISOString() : null
+        })
+        .eq('id', messageId);
+
+      if (error) throw error;
+
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === messageId ? { ...msg, is_pinned: !isPinned } : msg
@@ -457,6 +1109,13 @@ const TeacherDepartment = ({
       toast({
         title: "✓ Success",
         description: isPinned ? "Message unpinned" : "Message pinned",
+      });
+    } catch (error) {
+      console.error('Error toggling pin:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update message",
+        variant: "destructive",
       });
     }
   };
@@ -485,16 +1144,29 @@ const TeacherDepartment = ({
         ? new Date(`${eventData.date.toDateString()} ${eventData.endTime}`).toISOString()
         : eventData.date ? new Date(eventData.date).toISOString() : new Date().toISOString();
 
-      const newEvent = await createDepartmentEvent(department.id, {
-        event_title: eventData.title,
-        event_description: eventData.description,
-        event_type: eventData.type ? eventData.type.toLowerCase() : 'other',
-        start_datetime: startDateTime,
-        end_datetime: endDateTime,
-        location: eventData.location || null,
-        is_all_day: !eventData.startTime && !eventData.endTime,
-        created_by: userId,
-      });
+      const { data: newEvent, error } = await supabase
+        .from('department_events')
+        .insert({
+          department_id: department.id,
+          event_title: eventData.title,
+          event_description: eventData.description,
+          event_type: eventData.type ? eventData.type.toLowerCase() : 'other',
+          start_datetime: startDateTime,
+          end_datetime: endDateTime,
+          location: eventData.location || null,
+          is_all_day: !eventData.startTime && !eventData.endTime,
+          created_by: userId,
+        })
+        .select(`
+          *,
+          creator:user_profiles!department_events_created_by_fkey(
+            first_name,
+            last_name
+          )
+        `)
+        .single();
+
+      if (error) throw error;
 
       console.log('✅ Event created:', newEvent);
 
@@ -542,7 +1214,7 @@ const TeacherDepartment = ({
     return `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase();
   };
 
-  // Permission variables
+  const canManageMembers = userRole === 'hod' || userRole === 'admin';
   const canCreateEvents = userRole === 'hod' || userRole === 'admin';
   const canPinMessages = userRole === 'hod' || userRole === 'admin';
 
@@ -606,6 +1278,21 @@ const TeacherDepartment = ({
               }>
                 {userRole === 'hod' ? '👑 HOD' : userRole === 'admin' ? '⚡ Admin' : '👤 Member'}
               </Badge>
+            )}
+
+            {/* Manage Members Button */}
+            {canManageMembers && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setShowMembersDialog(true);
+                  loadDepartmentMembers();
+                }}
+              >
+                <Users className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Members</span>
+              </Button>
             )}
 
             {/* Department Selector */}
@@ -761,7 +1448,6 @@ const TeacherDepartment = ({
                           } ${(msg as any).sending ? 'opacity-60' : ''}`}>
                             <p className="text-sm break-words">{msg.message_text}</p>
 
-                            {/* Display images inline */}
                             {msg.message_type === 'image' && msg.file_url && (
                               <img 
                                 src={msg.file_url} 
@@ -771,7 +1457,6 @@ const TeacherDepartment = ({
                               />
                             )}
 
-                            {/* File attachments */}
                             {msg.file_name && msg.file_url && msg.message_type !== 'image' && (
                               <a 
                                 href={msg.file_url} 
@@ -802,7 +1487,6 @@ const TeacherDepartment = ({
                               <CheckCheck className="h-3 w-3 text-blue-500" />
                             )}
                             
-                            {/* Pin button */}
                             {canPinMessages && (
                               <button
                                 onClick={() => handleTogglePin(msg.id, msg.is_pinned)}
@@ -866,16 +1550,25 @@ const TeacherDepartment = ({
                 placeholder="Type a message..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
                 className="resize-none bg-input border-border text-foreground min-h-[44px] max-h-[120px] rounded-lg flex-1"
                 rows={1}
                 disabled={sending}
               />
               
               <Button 
-                onClick={handleSend} 
+                onClick={() => {
+                  console.log('🔴 Send button clicked!');
+                  handleSend();
+                }} 
                 disabled={sending || (!newMessage.trim() && !attachedFile)}
                 className="flex-shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 h-11 w-11 rounded-full p-0"
+                title="Send message"
               >
                 {sending ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -990,6 +1683,226 @@ const TeacherDepartment = ({
             onSave={handleCreateEvent}
             onCancel={() => setIsModalOpen(false)}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Members Management Dialog */}
+      <Dialog open={showMembersDialog} onOpenChange={setShowMembersDialog}>
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Manage Department Members
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground mt-2">
+              Add or remove faculty members and class representatives for {department?.department_name}
+            </p>
+          </DialogHeader>
+
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'faculty' | 'students')} className="flex-1 flex flex-col overflow-hidden">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="faculty">
+                Faculty Members ({departmentMembers.length})
+              </TabsTrigger>
+              <TabsTrigger value="students">
+                Class Representatives ({classRepresentatives.length})
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Faculty Tab */}
+            <TabsContent value="faculty" className="flex-1 overflow-hidden flex flex-col mt-4">
+              {loadingMembers ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto space-y-4">
+                  {/* Current Members */}
+                  <div>
+                    <h3 className="font-semibold mb-2">Current Faculty Members</h3>
+                    {departmentMembers.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4">
+                        No faculty members assigned yet
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {departmentMembers.map((member) => (
+                          <Card key={member.id} className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-sm">
+                                  {member.user_profiles.first_name} {member.user_profiles.last_name}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {member.user_profiles.user_code} • {member.user_profiles.email}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => removeDepartmentMember(
+                                  member.id,
+                                  `${member.user_profiles.first_name} ${member.user_profiles.last_name}`
+                                )}
+                              >
+                                <UserMinus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Available Faculty */}
+                  <div>
+                    <h3 className="font-semibold mb-2">Add Faculty Members</h3>
+                    <div className="relative mb-2">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search faculty..."
+                        value={memberSearchTerm}
+                        onChange={(e) => setMemberSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                    {filteredAvailableFaculty.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4">
+                        {memberSearchTerm ? 'No matching faculty found' : 'All faculty are already members'}
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {filteredAvailableFaculty.map((faculty) => (
+                          <Card key={faculty.id} className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-sm">
+                                  {faculty.first_name} {faculty.last_name}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {faculty.user_code} • {faculty.email}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => addDepartmentMember(faculty.id)}
+                              >
+                                <UserPlus className="h-4 w-4 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Students Tab */}
+            <TabsContent value="students" className="flex-1 overflow-hidden flex flex-col mt-4">
+              {loadingMembers ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto space-y-4">
+                  {/* Current CRs */}
+                  <div>
+                    <h3 className="font-semibold mb-2 flex items-center gap-2">
+                      <Crown className="h-4 w-4 text-yellow-500" />
+                      Current Class Representatives
+                    </h3>
+                    {classRepresentatives.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4">
+                        No class representatives assigned yet
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {classRepresentatives.map((cr) => (
+                          <Card key={cr.id} className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Crown className="h-4 w-4 text-yellow-500" />
+                                <div>
+                                  <p className="font-medium text-sm">
+                                    {cr.user_profiles.first_name} {cr.user_profiles.last_name}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {cr.user_profiles.user_code} • {cr.user_profiles.email}
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => removeClassRepresentative(
+                                  cr.id,
+                                  `${cr.user_profiles.first_name} ${cr.user_profiles.last_name}`
+                                )}
+                              >
+                                <UserMinus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Available Students */}
+                  <div>
+                    <h3 className="font-semibold mb-2">Add Class Representatives</h3>
+                    <div className="relative mb-2">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search students..."
+                        value={memberSearchTerm}
+                        onChange={(e) => setMemberSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                    {filteredAvailableStudents.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4">
+                        {memberSearchTerm ? 'No matching students found' : 'All students are already CRs'}
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {filteredAvailableStudents.map((student) => (
+                          <Card key={student.id} className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium text-sm">
+                                  {student.first_name} {student.last_name}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {student.user_code} • {student.email}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                onClick={() => addClassRepresentative(student.id)}
+                              >
+                                <Crown className="h-4 w-4 mr-1" />
+                                Add
+                              </Button>
+                            </div>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+
+          <div className="flex justify-end pt-4 border-t">
+            <Button onClick={() => setShowMembersDialog(false)}>
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

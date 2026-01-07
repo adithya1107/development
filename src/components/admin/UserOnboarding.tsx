@@ -8,10 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { UserPlus, Mail, Eye, CheckCircle, XCircle, Clock, RefreshCw, Download, Upload, AlertCircle } from 'lucide-react';
+import { UserPlus, Mail, Eye, CheckCircle, XCircle, Clock, RefreshCw, Download, Upload, AlertCircle, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import Papa from 'papaparse';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface UserOnboardingRecord {
   id: string;
@@ -34,6 +35,18 @@ interface UserOnboardingRecord {
     user_code: string;
     user_type: string;
   };
+}
+
+interface ParentInfo {
+  first_name: string;
+  last_name: string;
+  email: string;
+  relationship_type: 'father' | 'mother' | 'guardian' | 'other';
+  is_primary_contact: boolean;
+  contact_info: string;
+  occupation: string;
+  income: string;
+  dob: string;
 }
 
 interface BulkImportData {
@@ -63,6 +76,7 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
   });
   const [isProcessingBulk, setIsProcessingBulk] = useState(false);
   const [processingAction, setProcessingAction] = useState<string | null>(null);
+  const [includeParent, setIncludeParent] = useState(false);
 
   const [newUserForm, setNewUserForm] = useState({
     first_name: '',
@@ -70,6 +84,18 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
     email: '',
     user_code: '',
     user_type: 'student'
+  });
+
+  const [parentForm, setParentForm] = useState<ParentInfo>({
+    first_name: '',
+    last_name: '',
+    email: '',
+    relationship_type: 'father',
+    is_primary_contact: true,
+    contact_info: '',
+    occupation: '',
+    income: '',
+    dob: ''
   });
 
   useEffect(() => {
@@ -147,6 +173,33 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
     return regex.test(userCode.trim());
   };
 
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+    return emailRegex.test(email);
+  };
+
+  const validateParentForm = (): string | null => {
+    if (!parentForm.first_name || !parentForm.last_name) {
+      return "Parent first name and last name are required.";
+    }
+    if (!parentForm.email || !validateEmail(parentForm.email)) {
+      return "Valid parent email is required.";
+    }
+    if (!parentForm.contact_info || parentForm.contact_info.length < 10) {
+      return "Valid parent contact number is required (at least 10 digits).";
+    }
+    if (!parentForm.occupation) {
+      return "Parent occupation is required.";
+    }
+    if (!parentForm.income) {
+      return "Parent income information is required.";
+    }
+    if (!parentForm.dob) {
+      return "Parent date of birth is required.";
+    }
+    return null;
+  };
+
   const sendWelcomeEmail = async (
     email: string,
     firstName: string,
@@ -220,10 +273,11 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
 
   const handleAddUser = async () => {
     try {
+      // Validate student form
       if (!newUserForm.first_name || !newUserForm.last_name || !newUserForm.email || !newUserForm.user_code) {
         toast({
           title: "Error",
-          description: "Please fill in all required fields including user code.",
+          description: "Please fill in all required student fields including user code.",
           variant: "destructive",
         });
         return;
@@ -240,17 +294,39 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
         return;
       }
 
-      const tempPassword = generateTempPassword();
+      // Validate parent form if parent is included
+      if (includeParent) {
+        const parentValidationError = validateParentForm();
+        if (parentValidationError) {
+          toast({
+            title: "Error",
+            description: parentValidationError,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
 
-      const { data: createUserData, error: createUserError } = await supabase.functions.invoke('create-user-with-onboarding', {
+      const tempPassword = generateTempPassword();
+      const parentTempPassword = includeParent ? generateTempPassword() : null;
+
+      // Create student and optionally parent
+      const { data: createUserData, error: createUserError } = await supabase.functions.invoke('create-user-with-parent', {
         body: {
-          first_name: newUserForm.first_name,
-          last_name: newUserForm.last_name,
-          email: newUserForm.email,
-          user_type: newUserForm.user_type,
-          college_id: userProfile.college_id,
-          user_code: userCode,
-          temp_password: tempPassword
+          student: {
+            first_name: newUserForm.first_name,
+            last_name: newUserForm.last_name,
+            email: newUserForm.email,
+            user_type: newUserForm.user_type,
+            college_id: userProfile.college_id,
+            user_code: userCode,
+            temp_password: tempPassword
+          },
+          parent: includeParent ? {
+            ...parentForm,
+            temp_password: parentTempPassword,
+            college_id: userProfile.college_id
+          } : null
         }
       });
 
@@ -274,25 +350,39 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
         return;
       }
 
-      let emailSuccess = false;
+      // Send welcome emails
+      let studentEmailSuccess = false;
+      let parentEmailSuccess = false;
+
       try {
         await sendWelcomeEmail(
           newUserForm.email,
           newUserForm.first_name,
           userCode,
           tempPassword,
-          createUserData.onboarding_id
+          createUserData.student_onboarding_id
         );
-        emailSuccess = true;
+        studentEmailSuccess = true;
       } catch (emailError: any) {
-        console.error('Email sending error:', emailError);
-        toast({
-          title: "Warning",
-          description: `User created but email failed to send: ${emailError.message}`,
-          variant: "destructive",
-        });
+        console.error('Student email sending error:', emailError);
       }
 
+      if (includeParent && createUserData.parent_onboarding_id) {
+        try {
+          await sendWelcomeEmail(
+            parentForm.email,
+            parentForm.first_name,
+            createUserData.parent_user_code,
+            parentTempPassword!,
+            createUserData.parent_onboarding_id
+          );
+          parentEmailSuccess = true;
+        } catch (emailError: any) {
+          console.error('Parent email sending error:', emailError);
+        }
+      }
+
+      // Reset forms
       setNewUserForm({
         first_name: '',
         last_name: '',
@@ -300,15 +390,40 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
         user_code: '',
         user_type: 'student'
       });
+      setParentForm({
+        first_name: '',
+        last_name: '',
+        email: '',
+        relationship_type: 'father',
+        is_primary_contact: true,
+        contact_info: '',
+        occupation: '',
+        income: '',
+        dob: ''
+      });
+      setIncludeParent(false);
       setIsAddUserDialogOpen(false);
 
       await loadOnboardingData();
 
+      let description = `Student created successfully.`;
+      if (studentEmailSuccess) {
+        description += ` Welcome email sent to ${newUserForm.email}.`;
+      } else {
+        description += ` Student email failed to send.`;
+      }
+      if (includeParent) {
+        description += ` Parent account created.`;
+        if (parentEmailSuccess) {
+          description += ` Parent welcome email sent to ${parentForm.email}.`;
+        } else {
+          description += ` Parent email failed to send.`;
+        }
+      }
+
       toast({
         title: "Success",
-        description: emailSuccess 
-          ? `User created successfully. Welcome email sent to ${newUserForm.email}`
-          : `User created successfully, but email failed to send. Click resend to try again.`,
+        description,
       });
     } catch (error: any) {
       console.error('Error creating user:', error);
@@ -838,77 +953,207 @@ const UserOnboarding = ({ userProfile }: { userProfile: UserProfile }) => {
                     Add User
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Add New User</DialogTitle>
                     <DialogDescription>
                       Create a new user with automated onboarding and welcome email
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="grid grid-cols-2 gap-4 py-4">
-                    <div>
-                      <Label htmlFor="first_name">First Name *</Label>
-                      <Input
-                        id="first_name"
-                        value={newUserForm.first_name}
-                        onChange={(e) => setNewUserForm({...newUserForm, first_name: e.target.value})}
-                        required
+                  <div className="space-y-6 py-4">
+                    {/* Student Information */}
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold">Student Information</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="first_name">First Name *</Label>
+                          <Input
+                            id="first_name"
+                            value={newUserForm.first_name}
+                            onChange={(e) => setNewUserForm({...newUserForm, first_name: e.target.value})}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="last_name">Last Name *</Label>
+                          <Input
+                            id="last_name"
+                            value={newUserForm.last_name}
+                            onChange={(e) => setNewUserForm({...newUserForm, last_name: e.target.value})}
+                            required
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label htmlFor="email">Email *</Label>
+                          <Input
+                            id="email"
+                            type="email"
+                            value={newUserForm.email}
+                            onChange={(e) => setNewUserForm({...newUserForm, email: e.target.value})}
+                            required
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Label htmlFor="user_code">User Code *</Label>
+                          <Input
+                            id="user_code"
+                            value={newUserForm.user_code}
+                            onChange={(e) => setNewUserForm({...newUserForm, user_code: e.target.value})}
+                            placeholder="e.g., S240001, T240045"
+                            required
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            3-20 characters: letters, numbers, hyphens, or underscores only
+                          </p>
+                        </div>
+                        <div className="col-span-2">
+                          <Label htmlFor="user_type">User Type</Label>
+                          <Select value={newUserForm.user_type} onValueChange={(value) => setNewUserForm({ ...newUserForm, user_type: value })}>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="student">Student</SelectItem>
+                              <SelectItem value="faculty">Teacher</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
+                              <SelectItem value="parent">Parent</SelectItem>
+                              <SelectItem value="alumni">Alumni</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Include Parent Checkbox */}
+                    <div className="flex items-center space-x-2 border-t pt-4">
+                      <Checkbox 
+                        id="include_parent" 
+                        checked={includeParent}
+                        onCheckedChange={(checked) => setIncludeParent(checked as boolean)}
                       />
+                      <label
+                        htmlFor="include_parent"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center cursor-pointer"
+                      >
+                        <Users className="w-4 h-4 mr-2" />
+                        Include Parent/Guardian Account
+                      </label>
                     </div>
-                    <div>
-                      <Label htmlFor="last_name">Last Name *</Label>
-                      <Input
-                        id="last_name"
-                        value={newUserForm.last_name}
-                        onChange={(e) => setNewUserForm({...newUserForm, last_name: e.target.value})}
-                        required
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Label htmlFor="email">Email *</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={newUserForm.email}
-                        onChange={(e) => setNewUserForm({...newUserForm, email: e.target.value})}
-                        required
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Label htmlFor="user_code">User Code *</Label>
-                      <Input
-                        id="user_code"
-                        value={newUserForm.user_code}
-                        onChange={(e) => setNewUserForm({...newUserForm, user_code: e.target.value})}
-                        placeholder="e.g., S240001, T240045"
-                        required
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        3-20 characters: letters, numbers, hyphens, or underscores only
-                      </p>
-                    </div>
-                    <div className="col-span-2">
-                      <Label htmlFor="user_type">User Type</Label>
-                      <Select value={newUserForm.user_type} onValueChange={(value) => setNewUserForm({ ...newUserForm, user_type: value })}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="student">Student</SelectItem>
-                          <SelectItem value="faculty">Teacher</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          <SelectItem value="parent">Parent</SelectItem>
-                          <SelectItem value="alumni">Alumni</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+
+                    {/* Parent Information - Only shown if checkbox is checked */}
+                    {includeParent && (
+                      <div className="space-y-4 border rounded-lg p-4">
+                        <h3 className="text-lg font-semibold">Parent/Guardian Information</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label htmlFor="parent_first_name">First Name *</Label>
+                            <Input
+                              id="parent_first_name"
+                              value={parentForm.first_name}
+                              onChange={(e) => setParentForm({...parentForm, first_name: e.target.value})}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="parent_last_name">Last Name *</Label>
+                            <Input
+                              id="parent_last_name"
+                              value={parentForm.last_name}
+                              onChange={(e) => setParentForm({...parentForm, last_name: e.target.value})}
+                              required
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <Label htmlFor="parent_email">Email *</Label>
+                            <Input
+                              id="parent_email"
+                              type="email"
+                              value={parentForm.email}
+                              onChange={(e) => setParentForm({...parentForm, email: e.target.value})}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="relationship_type">Relationship *</Label>
+                            <Select 
+                              value={parentForm.relationship_type} 
+                              onValueChange={(value: any) => setParentForm({ ...parentForm, relationship_type: value })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="father">Father</SelectItem>
+                                <SelectItem value="mother">Mother</SelectItem>
+                                <SelectItem value="guardian">Guardian</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="parent_contact">Contact Number *</Label>
+                            <Input
+                              id="parent_contact"
+                              type="tel"
+                              value={parentForm.contact_info}
+                              onChange={(e) => setParentForm({...parentForm, contact_info: e.target.value})}
+                              placeholder="10-digit number"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="parent_occupation">Occupation *</Label>
+                            <Input
+                              id="parent_occupation"
+                              value={parentForm.occupation}
+                              onChange={(e) => setParentForm({...parentForm, occupation: e.target.value})}
+                              required
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="parent_income">Annual Income *</Label>
+                            <Input
+                              id="parent_income"
+                              type="number"
+                              value={parentForm.income}
+                              onChange={(e) => setParentForm({...parentForm, income: e.target.value})}
+                              placeholder="Amount in currency"
+                              required
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <Label htmlFor="parent_dob">Date of Birth *</Label>
+                            <Input
+                              id="parent_dob"
+                              type="date"
+                              value={parentForm.dob}
+                              onChange={(e) => setParentForm({...parentForm, dob: e.target.value})}
+                              required
+                            />
+                          </div>
+                          <div className="col-span-2 flex items-center space-x-2">
+                            <Checkbox 
+                              id="is_primary_contact" 
+                              checked={parentForm.is_primary_contact}
+                              onCheckedChange={(checked) => setParentForm({...parentForm, is_primary_contact: checked as boolean})}
+                            />
+                            <label
+                              htmlFor="is_primary_contact"
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            >
+                              Set as Primary Contact
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsAddUserDialogOpen(false)}>
                       Cancel
                     </Button>
                     <Button onClick={handleAddUser}>
-                      Create User & Send Welcome Email
+                      {includeParent ? 'Create Student & Parent' : 'Create User & Send Welcome Email'}
                     </Button>
                   </DialogFooter>
                 </DialogContent>

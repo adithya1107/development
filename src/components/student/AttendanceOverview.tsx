@@ -254,10 +254,9 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
     const hasTeacherLocation = session.teacher_latitude && session.teacher_longitude;
     
     if (hasTeacherLocation) {
+      const locationToast = toast.loading('📍 Getting location...');
+      
       try {
-        // Single toast for getting location
-        const locationToast = toast.loading('📍 Verifying your location...');
-        
         // Get location with accuracy
         const position = await new Promise<GeolocationPosition>((resolve, reject) => {
           const ACCEPTABLE_ACCURACY = 30;
@@ -347,6 +346,7 @@ const AttendanceOverview: React.FC<AttendanceOverviewProps> = ({ studentData }) 
         }
         
       } catch (locationError: any) {
+        toast.dismiss(locationToast);
         console.error('Location error:', locationError);
         
         let errorReason = 'Location access denied or unavailable';

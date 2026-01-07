@@ -222,17 +222,53 @@ const Parent = () => {
         setIsLoadingFeatures(true);
         console.log('Loading features for parent:', user.user_id);
         
-        const features = await loadUserFeatures(user.college_id, 'parent');
+        // Load features from database with icon information
+        const { data: featuresData, error: featuresError } = await supabase
+                  .from('feature_configurations')
+                  .select(`
+                    *,
+                    feature_definitions (
+                      feature_key,
+                      feature_name,
+                      icon_name,
+                      description
+                    )
+                  `)
+                  .eq('college_id', teacherData.college_id)
+                  .contains('target_user_types', ['parent'])
+                  .eq('is_enabled', true)
+                  .order('display_order', { ascending: true });
+
+        if (featuresError) throw featuresError;
         
-        if (features.length === 0) {
+        if (!featuresData || featuresData.length === 0) {
           console.warn('No features configured, using defaults');
           setSidebarItems(getDefaultParentFeatures());
           setAvailableFeatureKeys(new Set(['dashboard', 'academic', 'attendance', 'payments', 'communication', 'events']));
         } else {
-          const items = featuresToSidebarItems(features);
+          // Import all lucide-react icons dynamically
+          const iconMap = {
+            User, BookOpen, Calendar, CreditCard, MessageSquare, Users, 
+            TrendingUp, GraduationCap, DollarSign, Clock
+          };
+
+          // Convert features to sidebar items with icons from feature_definition
+          const items = featuresData.map((feature) => {
+            const iconName = feature.feature_definitions?.icon_name || 'User';
+            const IconComponent = iconMap[iconName] || User;
+            
+            return {
+              id: feature.feature_definitions?.feature_key || feature.feature_key,
+              label: feature.feature_definitions?.feature_name || feature.feature_key,
+              icon: IconComponent,
+              enabled: feature.is_enabled,
+              order: feature.display_order
+            };
+          });
+          
           setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
           
-          const featureKeys = new Set(features.map(f => f.feature_key));
+          const featureKeys = new Set(featuresData.map(f => f.feature_definitions?.feature_key || f.feature_key));
           setAvailableFeatureKeys(featureKeys);
           
           console.log(`Loaded ${items.length} features for parent`);

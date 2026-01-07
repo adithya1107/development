@@ -1,3 +1,16 @@
+/**
+ * ClubAdvisor Component
+ * 
+ * This component manages clubs using a tag-based role system:
+ * 
+ * Tag Assignments with Context:
+ * - club_advisor: Assigned to teachers with context_type='club' and context_id=[club_id]
+ * - club_member: Assigned to students with context_type='club' and context_id=[club_id]
+ * - club_president: Assigned to ONE student per club with context_type='club' and context_id=[club_id]
+ * 
+ * All role assignments use generic tags with context to scope them to specific clubs.
+ */
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +31,7 @@ import {
   Edit,
   Search,
   X,
+  Crown,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
@@ -34,22 +48,34 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
   const [selectedClub, setSelectedClub] = useState<any>(null);
   const [clubMembers, setClubMembers] = useState<any[]>([]);
   const [availableStudents, setAvailableStudents] = useState<any[]>([]);
+  const [allStudents, setAllStudents] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [newClubDialogOpen, setNewClubDialogOpen] = useState(false);
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [editClubDialogOpen, setEditClubDialogOpen] = useState(false);
   const [editingClub, setEditingClub] = useState<any>(null);
+  const [clubPresidents, setClubPresidents] = useState<{[key: string]: any}>({});
 
   const [newClub, setNewClub] = useState({
     club_name: '',
     description: '',
     club_category: 'academic',
-    club_logo: ''
+    club_logo: '',
+    club_president_id: ''
+  });
+
+  const [editForm, setEditForm] = useState({
+    club_name: '',
+    description: '',
+    club_category: 'academic',
+    club_logo: '',
+    club_president_id: ''
   });
 
   useEffect(() => {
     if (teacherData?.user_id) {
       fetchAdvisorClubs();
+      fetchAllStudents();
     }
   }, [teacherData]);
 
@@ -58,6 +84,61 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
       fetchClubMembers();
     }
   }, [selectedClub]);
+
+  const fetchAllStudents = async () => {
+    try {
+      const { data: students, error } = await supabase
+        .from('user_profiles')
+        .select('id, first_name, last_name, email, user_code')
+        .eq('college_id', teacherData.college_id)
+        .eq('user_type', 'student')
+        .eq('is_active', true)
+        .order('first_name', { ascending: true });
+
+      if (error) throw error;
+      setAllStudents(students || []);
+    } catch (error) {
+      console.error('Error fetching all students:', error);
+    }
+  };
+
+  const fetchClubPresidents = async (clubIds: string[]) => {
+    try {
+      const { data: presidentTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'club_president')
+        .single();
+
+      if (!presidentTag) return;
+
+      const { data: assignments, error } = await supabase
+        .from('user_tag_assignments')
+        .select(`
+          context_id,
+          user_profiles!user_tag_assignments_user_id_fkey (
+            id,
+            first_name,
+            last_name
+          )
+        `)
+        .eq('tag_id', presidentTag.id)
+        .eq('context_type', 'club')
+        .in('context_id', clubIds)
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      const presidentsMap: {[key: string]: any} = {};
+      assignments?.forEach(assignment => {
+        presidentsMap[assignment.context_id] = assignment.user_profiles;
+      });
+      
+      setClubPresidents(presidentsMap);
+    } catch (error) {
+      console.error('Error fetching club presidents:', error);
+    }
+  };
 
   const fetchAdvisorClubs = async () => {
     try {
@@ -104,8 +185,13 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
       console.log('Fetched clubs:', clubsData);
       setClubs(clubsData || []);
       
-      if (clubsData && clubsData.length > 0 && !selectedClub) {
-        setSelectedClub(clubsData[0]);
+      // Fetch presidents for all clubs
+      if (clubsData && clubsData.length > 0) {
+        await fetchClubPresidents(clubsData.map(c => c.id));
+        
+        if (!selectedClub) {
+          setSelectedClub(clubsData[0]);
+        }
       }
     } catch (error) {
       console.error('Error fetching advisor clubs:', error);
@@ -205,6 +291,49 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
     }
   };
 
+  const assignPresidentRole = async (studentId: string, clubId: string) => {
+    try {
+      // Get the generic club_president tag
+      const { data: presidentTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'club_president')
+        .single();
+
+      if (!presidentTag) {
+        console.error('club_president tag not found. Please run the setup SQL first.');
+        return false;
+      }
+
+      // Remove old president assignment for this club if exists
+      await supabase
+        .from('user_tag_assignments')
+        .update({ is_active: false })
+        .eq('tag_id', presidentTag.id)
+        .eq('context_type', 'club')
+        .eq('context_id', clubId);
+
+      // Assign new president with context
+      const { error } = await supabase
+        .from('user_tag_assignments')
+        .insert({
+          user_id: studentId,
+          tag_id: presidentTag.id,
+          context_type: 'club',
+          context_id: clubId,
+          assigned_by: teacherData.user_id
+        });
+
+      if (error) throw error;
+
+      console.log('✅ Club president role assigned with context');
+      return true;
+    } catch (error) {
+      console.error('Error assigning president:', error);
+      return false;
+    }
+  };
+
   const createClub = async () => {
     try {
       if (!newClub.club_name || !newClub.club_category) {
@@ -244,7 +373,7 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
         return;
       }
 
-      // 2. Create club (without tag references)
+      // 2. Create club
       const { data: clubData, error: clubError } = await supabase
         .from('clubs')
         .insert({
@@ -261,7 +390,6 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
       if (clubError) throw clubError;
 
       // 3. Assign advisor tag to teacher with context
-      // First check if this exact assignment already exists
       const { data: existingAssignment } = await supabase
         .from('user_tag_assignments')
         .select('id, is_active')
@@ -272,7 +400,6 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
         .maybeSingle();
 
       if (existingAssignment) {
-        // If exists but inactive, reactivate it
         if (!existingAssignment.is_active) {
           const { error: updateError } = await supabase
             .from('user_tag_assignments')
@@ -281,9 +408,7 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
           
           if (updateError) throw updateError;
         }
-        // If already active, no need to do anything
       } else {
-        // Create new assignment
         const { error: assignError } = await supabase
           .from('user_tag_assignments')
           .insert({
@@ -297,9 +422,30 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
         if (assignError) throw assignError;
       }
 
+      // 4. Assign president role if selected
+      if (clubData && newClub.club_president_id) {
+        // First add the student as a member
+        const { error: memberError } = await supabase
+          .from('user_tag_assignments')
+          .insert({
+            user_id: newClub.club_president_id,
+            tag_id: memberTag.id,
+            context_type: 'club',
+            context_id: clubData.id,
+            assigned_by: teacherData.user_id
+          });
+
+        if (memberError) {
+          console.error('Error adding president as member:', memberError);
+        }
+
+        // Then assign president role
+        await assignPresidentRole(newClub.club_president_id, clubData.id);
+      }
+
       toast({
         title: 'Success',
-        description: `${newClub.club_name} created successfully`
+        description: `${newClub.club_name} created successfully${newClub.club_president_id ? ' with president assigned' : ''}`
       });
 
       setNewClubDialogOpen(false);
@@ -307,7 +453,8 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
         club_name: '',
         description: '',
         club_category: 'academic',
-        club_logo: ''
+        club_logo: '',
+        club_president_id: ''
       });
 
       await fetchAdvisorClubs();
@@ -371,63 +518,49 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
     }
   };
 
-  const assignPresidentRole = async (studentId: string, clubId: string) => {
-    try {
-      // Get the generic club_president tag
-      const { data: presidentTag } = await supabase
-        .from('user_tags')
-        .select('id')
-        .eq('tag_name', 'club_president')
-        .single();
+  const makePresident = async (studentId: string) => {
+    if (!selectedClub) return;
 
-      if (!presidentTag) {
-        toast({
-          title: 'Error',
-          description: 'club_president tag not found',
-          variant: 'destructive'
-        });
-        return false;
+    // Confirm if there's already a president
+    const currentPresident = clubPresidents[selectedClub.id];
+    if (currentPresident && currentPresident.id !== studentId) {
+      if (!confirm(`This will remove ${currentPresident.first_name} ${currentPresident.last_name} as president and assign the role to the new member. Continue?`)) {
+        return;
       }
+    }
 
-      // Remove old president assignment for this club if exists
-      await supabase
-        .from('user_tag_assignments')
-        .update({ is_active: false })
-        .eq('tag_id', presidentTag.id)
-        .eq('context_type', 'club')
-        .eq('context_id', clubId);
-
-      // Assign new president with context
-      const { error } = await supabase
-        .from('user_tag_assignments')
-        .insert({
-          user_id: studentId,
-          tag_id: presidentTag.id,
-          context_type: 'club',
-          context_id: clubId,
-          assigned_by: teacherData.user_id
-        });
-
-      if (error) throw error;
-
+    const success = await assignPresidentRole(studentId, selectedClub.id);
+    if (success) {
+      await fetchAdvisorClubs();
+      await fetchClubMembers();
       toast({
         title: 'Success',
-        description: 'President role assigned'
+        description: 'President role assigned successfully'
       });
-
-      return true;
-    } catch (error) {
-      console.error('Error assigning president:', error);
+    } else {
       toast({
         title: 'Error',
         description: 'Failed to assign president role',
         variant: 'destructive'
       });
-      return false;
     }
   };
 
-  const removeMember = async (assignmentId: string, memberName: string) => {
+  const removeMember = async (assignmentId: string, memberName: string, userId?: string) => {
+    if (!selectedClub) return;
+
+    // Check if this member is the president
+    const isPresident = clubPresidents[selectedClub.id]?.id === userId;
+    
+    if (isPresident) {
+      toast({
+        title: 'Cannot Remove President',
+        description: 'Please assign a new president before removing this member.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('user_tag_assignments')
@@ -442,6 +575,7 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
       });
 
       await fetchClubMembers();
+      await fetchAvailableStudents();
     } catch (error) {
       console.error('Error removing member:', error);
       toast({
@@ -453,6 +587,8 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
   };
 
   const startEditClub = (club: any) => {
+    const presidentId = clubPresidents[club.id]?.id || '';
+    
     setEditingClub({
       id: club.id,
       club_name: club.club_name,
@@ -460,12 +596,21 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
       club_category: club.club_category,
       club_logo: club.club_logo || ''
     });
+    
+    setEditForm({
+      club_name: club.club_name,
+      description: club.description || '',
+      club_category: club.club_category,
+      club_logo: club.club_logo || '',
+      club_president_id: presidentId
+    });
+    
     setEditClubDialogOpen(true);
   };
 
   const updateClub = async () => {
     try {
-      if (!editingClub.club_name || !editingClub.club_category) {
+      if (!editingClub || !editForm.club_name || !editForm.club_category) {
         toast({
           title: 'Error',
           description: 'Please fill in all required fields',
@@ -477,15 +622,64 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
       const { error } = await supabase
         .from('clubs')
         .update({
-          club_name: editingClub.club_name,
-          description: editingClub.description || null,
-          club_category: editingClub.club_category,
-          club_logo: editingClub.club_logo || null,
+          club_name: editForm.club_name,
+          description: editForm.description || null,
+          club_category: editForm.club_category,
+          club_logo: editForm.club_logo || null,
           updated_at: new Date().toISOString()
         })
         .eq('id', editingClub.id);
 
       if (error) throw error;
+
+      // Update president if changed
+      const currentPresidentId = clubPresidents[editingClub.id]?.id || '';
+      if (editForm.club_president_id !== currentPresidentId) {
+        if (editForm.club_president_id) {
+          // Check if new president is already a member
+          const isMember = clubMembers.some(m => m.user_profiles.id === editForm.club_president_id);
+          
+          if (!isMember) {
+            // Add as member first
+            const { data: memberTag } = await supabase
+              .from('user_tags')
+              .select('id')
+              .eq('tag_name', 'club_member')
+              .single();
+
+            if (memberTag) {
+              await supabase
+                .from('user_tag_assignments')
+                .insert({
+                  user_id: editForm.club_president_id,
+                  tag_id: memberTag.id,
+                  context_type: 'club',
+                  context_id: editingClub.id,
+                  assigned_by: teacherData.user_id
+                });
+            }
+          }
+          
+          // Assign president role
+          await assignPresidentRole(editForm.club_president_id, editingClub.id);
+        } else if (currentPresidentId) {
+          // Remove president role
+          const { data: presidentTag } = await supabase
+            .from('user_tags')
+            .select('id')
+            .eq('tag_name', 'club_president')
+            .single();
+
+          if (presidentTag) {
+            await supabase
+              .from('user_tag_assignments')
+              .update({ is_active: false })
+              .eq('tag_id', presidentTag.id)
+              .eq('context_type', 'club')
+              .eq('context_id', editingClub.id);
+          }
+        }
+      }
 
       toast({
         title: 'Success',
@@ -495,6 +689,9 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
       setEditClubDialogOpen(false);
       setEditingClub(null);
       await fetchAdvisorClubs();
+      if (selectedClub?.id === editingClub.id) {
+        await fetchClubMembers();
+      }
     } catch (error) {
       console.error('Error updating club:', error);
       toast({
@@ -633,6 +830,26 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
                         </div>
 
                         <div>
+                          <label className="text-sm font-medium">Club President (Optional)</label>
+                          <Select
+                            value={newClub.club_president_id || "none"}
+                            onValueChange={(value) => setNewClub({...newClub, club_president_id: value === "none" ? "" : value})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a student" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No President</SelectItem>
+                              {allStudents.map((student) => (
+                                <SelectItem key={student.id} value={student.id}>
+                                  {student.first_name} {student.last_name} ({student.user_code})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
                           <label className="text-sm font-medium">Club Logo URL</label>
                           <Input
                             placeholder="Enter logo URL (optional)"
@@ -684,6 +901,15 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
                               <p className="text-xs sm:text-sm text-muted-foreground mb-2 line-clamp-2">
                                 {club.description}
                               </p>
+                            )}
+                            
+                            {clubPresidents[club.id] && (
+                              <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground mb-2">
+                                <Crown className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-500" />
+                                <span>
+                                  President: {clubPresidents[club.id].first_name} {clubPresidents[club.id].last_name}
+                                </span>
+                              </div>
                             )}
                             
                             <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
@@ -749,6 +975,11 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">
                         {clubMembers.length} member{clubMembers.length !== 1 ? 's' : ''}
+                        {clubPresidents[selectedClub.id] && (
+                          <span className="ml-2">
+                            • President: {clubPresidents[selectedClub.id].first_name} {clubPresidents[selectedClub.id].last_name}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <Dialog open={addMemberDialogOpen} onOpenChange={(open) => {
@@ -800,7 +1031,10 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
                                     </div>
                                     <Button
                                       size="sm"
-                                      onClick={() => addMember(student.id)}
+                                      onClick={() => {
+                                        addMember(student.id);
+                                        setAddMemberDialogOpen(false);
+                                      }}
                                     >
                                       Add
                                     </Button>
@@ -824,30 +1058,56 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {clubMembers.map((member) => (
-                        <Card key={member.id} className="p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">
-                                {member.user_profiles.first_name} {member.user_profiles.last_name}
-                              </p>
-                              <p className="text-xs text-muted-foreground truncate">
-                                {member.user_profiles.user_code} • {member.user_profiles.email}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                Joined {new Date(member.assigned_at).toLocaleDateString()}
-                              </p>
+                      {clubMembers.map((member) => {
+                        const isPresident = clubPresidents[selectedClub.id]?.id === member.user_profiles.id;
+                        
+                        return (
+                          <Card key={member.id} className="p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium truncate">
+                                    {member.user_profiles.first_name} {member.user_profiles.last_name}
+                                  </p>
+                                  {isPresident && (
+                                    <Badge variant="secondary" className="text-xs flex-shrink-0">
+                                      <Crown className="h-3 w-3 mr-1 text-yellow-500" />
+                                      President
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {member.user_profiles.user_code} • {member.user_profiles.email}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Joined {new Date(member.assigned_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {!isPresident && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => makePresident(member.user_profiles.id)}
+                                    title="Make president"
+                                  >
+                                    <Crown className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => removeMember(member.id, `${member.user_profiles.first_name} ${member.user_profiles.last_name}`, member.user_profiles.id)}
+                                  disabled={isPresident}
+                                  title={isPresident ? "Cannot remove president (change president first)" : "Remove member"}
+                                >
+                                  <UserMinus className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => removeMember(member.id, `${member.user_profiles.first_name} ${member.user_profiles.last_name}`)}
-                            >
-                              <UserMinus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </Card>
-                      ))}
+                          </Card>
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -868,8 +1128,8 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
                   <label className="text-sm font-medium">Club Name *</label>
                   <Input
                     placeholder="Enter club name"
-                    value={editingClub.club_name}
-                    onChange={(e) => setEditingClub({...editingClub, club_name: e.target.value})}
+                    value={editForm.club_name}
+                    onChange={(e) => setEditForm({...editForm, club_name: e.target.value})}
                   />
                 </div>
                 
@@ -877,8 +1137,8 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
                   <label className="text-sm font-medium">Description</label>
                   <Textarea
                     placeholder="Enter club description"
-                    value={editingClub.description}
-                    onChange={(e) => setEditingClub({...editingClub, description: e.target.value})}
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({...editForm, description: e.target.value})}
                     rows={3}
                   />
                 </div>
@@ -886,8 +1146,8 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
                 <div>
                   <label className="text-sm font-medium">Category *</label>
                   <Select
-                    value={editingClub.club_category}
-                    onValueChange={(value) => setEditingClub({...editingClub, club_category: value})}
+                    value={editForm.club_category}
+                    onValueChange={(value) => setEditForm({...editForm, club_category: value})}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -904,18 +1164,38 @@ const ClubAdvisor = ({ teacherData, userTags }: ClubAdvisorProps) => {
                 </div>
 
                 <div>
+                  <label className="text-sm font-medium">Club President</label>
+                  <Select
+                    value={editForm.club_president_id || "none"}
+                    onValueChange={(value) => setEditForm({...editForm, club_president_id: value === "none" ? "" : value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a student" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No President</SelectItem>
+                      {allStudents.map((student) => (
+                        <SelectItem key={student.id} value={student.id}>
+                          {student.first_name} {student.last_name} ({student.user_code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
                   <label className="text-sm font-medium">Club Logo URL</label>
                   <Input
                     placeholder="Enter logo URL (optional)"
-                    value={editingClub.club_logo}
-                    onChange={(e) => setEditingClub({...editingClub, club_logo: e.target.value})}
+                    value={editForm.club_logo}
+                    onChange={(e) => setEditForm({...editForm, club_logo: e.target.value})}
                   />
                 </div>
                 
                 <Button 
                   onClick={updateClub} 
                   className="w-full"
-                  disabled={!editingClub.club_name || !editingClub.club_category}
+                  disabled={!editForm.club_name || !editForm.club_category}
                 >
                   Update Club
                 </Button>

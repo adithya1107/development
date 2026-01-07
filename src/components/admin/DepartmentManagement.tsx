@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Building2, Plus, Edit, Search, AlertCircle, Trash2, AlertTriangle, BookOpen, Users } from 'lucide-react';
+import { Building2, Plus, Edit, Search, AlertCircle, Trash2, AlertTriangle, BookOpen, Users, Crown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 
@@ -58,6 +58,7 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
   const [departmentCourses, setDepartmentCourses] = useState<Course[]>([]);
   const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
   const [isLoadingCourses, setIsLoadingCourses] = useState(false);
+  const [departmentHODs, setDepartmentHODs] = useState<{[key: string]: any}>({});
 
   const [deptForm, setDeptForm] = useState({
     department_code: '',
@@ -82,6 +83,44 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
     loadAllCourses();
   }, [userProfile]);
 
+  const fetchDepartmentHODs = async (departmentIds: string[]) => {
+    try {
+      const { data: hodTag } = await supabase
+        .from('user_tags')
+        .select('id')
+        .eq('tag_name', 'hod')
+        .single();
+
+      if (!hodTag) return;
+
+      const { data: assignments, error } = await supabase
+        .from('user_tag_assignments')
+        .select(`
+          context_id,
+          user_profiles!user_tag_assignments_user_id_fkey (
+            id,
+            first_name,
+            last_name
+          )
+        `)
+        .eq('tag_id', hodTag.id)
+        .eq('context_type', 'department')
+        .in('context_id', departmentIds)
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      const hodsMap: {[key: string]: any} = {};
+      assignments?.forEach(assignment => {
+        hodsMap[assignment.context_id] = assignment.user_profiles;
+      });
+      
+      setDepartmentHODs(hodsMap);
+    } catch (error) {
+      console.error('Error fetching department HODs:', error);
+    }
+  };
+
   const loadDepartments = async () => {
     try {
       if (!userProfile?.college_id) {
@@ -91,10 +130,7 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
 
       const { data, error } = await supabase
         .from('departments')
-        .select(`
-          *,
-          hod:user_profiles(first_name, last_name)
-        `)
+        .select('*')
         .eq('college_id', userProfile.college_id)
         .order('created_at', { ascending: false });
 
@@ -118,6 +154,11 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
           })
         );
         setDepartments(deptWithCounts);
+
+        // Fetch HODs for all departments
+        if (deptWithCounts.length > 0) {
+          await fetchDepartmentHODs(deptWithCounts.map(d => d.id));
+        }
       }
     } catch (error) {
       console.error('Error loading departments:', error);
@@ -215,11 +256,11 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
 
       if (tagError || !hodTag) {
         console.error('HOD tag not found. Please run the setup SQL first.');
-        return;
+        return false;
       }
 
       // Remove old HOD assignment for this department if exists
-      const { error: removeError } = await supabase
+      await supabase
         .from('user_tag_assignments')
         .update({ is_active: false })
         .eq('tag_id', hodTag.id)
@@ -240,9 +281,10 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
       if (assignError) throw assignError;
 
       console.log('✅ HOD role assigned with context');
+      return true;
     } catch (error) {
       console.error('Error assigning HOD role:', error);
-      // Don't fail the whole operation if tag assignment fails
+      return false;
     }
   };
 
@@ -258,16 +300,17 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
 
     setIsSubmitting(true);
     try {
+      // Step 1: Create the department
       const { data, error } = await supabase
         .from('departments')
         .insert([{
-          ...deptForm,
+          department_code: deptForm.department_code,
+          department_name: deptForm.department_name,
+          description: deptForm.description,
+          department_color: deptForm.department_color,
           college_id: userProfile.college_id
         }])
-        .select(`
-          *,
-          hod:user_profiles(first_name, last_name)
-        `)
+        .select()
         .single();
 
       if (error) {
@@ -277,28 +320,63 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
           description: "Failed to create department.",
           variant: "destructive",
         });
-      } else {
-        setDepartments([{ ...data, course_count: 0 }, ...departments]);
-        
-        // If HOD was assigned, also create the tag assignment
-        if (data && deptForm.hod_id) {
-          await assignHODRole(data.id, deptForm.hod_id);
-        }
-        
-        setIsAddDialogOpen(false);
-        setDeptForm({
-          department_code: '',
-          department_name: '',
-          description: '',
-          hod_id: '',
-          department_color: '#3b82f6'
-        });
-
-        toast({
-          title: "Success",
-          description: "Department created successfully.",
-        });
+        return;
       }
+
+      console.log('✅ Department created:', data.id);
+
+      // Step 2: If HOD was assigned, create the tag assignment
+      if (data && deptForm.hod_id) {
+        await assignHODRole(data.id, deptForm.hod_id);
+      }
+
+      // Step 3: Create default communication channel for the department
+      try {
+        const { data: channelData, error: channelError } = await supabase
+          .from('department_channels')
+          .insert({
+            department_id: data.id,
+            channel_name: 'General',
+            channel_type: 'general',
+            description: 'General department discussion',
+            created_by: userProfile.id,
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (channelError) {
+          console.error('Error creating default channel:', channelError);
+          // Don't fail the entire operation, just log it
+          toast({
+            title: "Warning",
+            description: "Department created but default channel creation failed. Please create a channel manually.",
+            variant: "default",
+          });
+        } else {
+          console.log('✅ Default channel created:', channelData.id);
+        }
+      } catch (channelErr) {
+        console.error('Error creating default channel:', channelErr);
+      }
+
+      setDepartments([{ ...data, course_count: 0 }, ...departments]);
+      setIsAddDialogOpen(false);
+      setDeptForm({
+        department_code: '',
+        department_name: '',
+        description: '',
+        hod_id: '',
+        department_color: '#3b82f6'
+      });
+
+      // Reload to get HOD info
+      await loadDepartments();
+
+      toast({
+        title: "Success",
+        description: `Department created successfully${deptForm.hod_id ? ' with HOD assigned' : ''} and default communication channel set up.`,
+      });
     } catch (error) {
       console.error('Error creating department:', error);
       toast({
@@ -312,12 +390,14 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
   };
 
   const handleEditClick = (dept: Department) => {
+    const hodId = departmentHODs[dept.id]?.id || '';
+    
     setSelectedDepartment(dept);
     setEditForm({
       department_code: dept.department_code,
       department_name: dept.department_name,
       description: dept.description || '',
-      hod_id: dept.hod_id || '',
+      hod_id: hodId,
       department_color: dept.department_color || '#3b82f6',
       is_active: dept.is_active
     });
@@ -338,12 +418,15 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
     try {
       const { data, error } = await supabase
         .from('departments')
-        .update(editForm)
+        .update({
+          department_code: editForm.department_code,
+          department_name: editForm.department_name,
+          description: editForm.description,
+          department_color: editForm.department_color,
+          is_active: editForm.is_active
+        })
         .eq('id', selectedDepartment.id)
-        .select(`
-          *,
-          hod:user_profiles(first_name, last_name)
-        `)
+        .select()
         .single();
 
       if (error) {
@@ -354,17 +437,39 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
           variant: "destructive",
         });
       } else {
+        // Update HOD tag assignment if HOD changed
+        const currentHodId = departmentHODs[selectedDepartment.id]?.id || '';
+        if (editForm.hod_id !== currentHodId) {
+          if (editForm.hod_id) {
+            await assignHODRole(data.id, editForm.hod_id);
+          } else if (currentHodId) {
+            // Remove HOD role
+            const { data: hodTag } = await supabase
+              .from('user_tags')
+              .select('id')
+              .eq('tag_name', 'hod')
+              .single();
+
+            if (hodTag) {
+              await supabase
+                .from('user_tag_assignments')
+                .update({ is_active: false })
+                .eq('tag_id', hodTag.id)
+                .eq('context_type', 'department')
+                .eq('context_id', selectedDepartment.id);
+            }
+          }
+        }
+
         setDepartments(departments.map(d => 
           d.id === selectedDepartment.id ? { ...data, course_count: d.course_count } : d
         ));
         
-        // Update HOD tag assignment if HOD changed
-        if (data && editForm.hod_id && editForm.hod_id !== selectedDepartment.hod_id) {
-          await assignHODRole(data.id, editForm.hod_id);
-        }
-        
         setIsEditDialogOpen(false);
         setSelectedDepartment(null);
+
+        // Reload to get updated HOD info
+        await loadDepartments();
 
         toast({
           title: "Success",
@@ -413,6 +518,17 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
         // Don't fail the operation
       }
 
+      // Delete all department channels (cascade will handle department_messages)
+      const { error: channelError } = await supabase
+        .from('department_channels')
+        .delete()
+        .eq('department_id', deptToDelete.id);
+
+      if (channelError) {
+        console.error('Error deleting department channels:', channelError);
+        // Don't fail the operation
+      }
+
       // Then delete the department
       const { error } = await supabase
         .from('departments')
@@ -427,7 +543,7 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
 
       toast({
         title: "Success",
-        description: "Department deleted successfully. All courses have been unassigned.",
+        description: "Department deleted successfully. All courses have been unassigned and communication channels removed.",
       });
 
       // Reload courses
@@ -523,10 +639,14 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
   };
 
   const filteredDepartments = departments.filter(dept => {
+    const hodName = departmentHODs[dept.id] 
+      ? `${departmentHODs[dept.id].first_name} ${departmentHODs[dept.id].last_name}` 
+      : '';
+    
     const matchesSearch =
       dept.department_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       dept.department_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (dept.hod && `${dept.hod.first_name} ${dept.hod.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()));
+      hodName.toLowerCase().includes(searchTerm.toLowerCase());
 
     return matchesSearch;
   });
@@ -601,12 +721,13 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
                     />
                   </div>
                   <div className="col-span-1 md:col-span-2">
-                    <Label htmlFor="hod">Head of Department</Label>
-                    <Select value={deptForm.hod_id} onValueChange={(value) => setDeptForm({...deptForm, hod_id: value})}>
+                    <Label htmlFor="hod">Head of Department (Optional)</Label>
+                    <Select value={deptForm.hod_id || "none"} onValueChange={(value) => setDeptForm({...deptForm, hod_id: value === "none" ? "" : value})}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select faculty member" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="none">No HOD</SelectItem>
                         {facultyMembers.map((faculty) => (
                           <SelectItem key={faculty.id} value={faculty.id}>
                             {faculty.first_name} {faculty.last_name}
@@ -663,68 +784,76 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredDepartments.map((dept) => (
-                    <TableRow key={dept.id}>
-                      <TableCell>
-                        <div className="flex items-center space-x-3">
-                          <div 
-                            className="w-3 h-3 rounded-full" 
-                            style={{ backgroundColor: dept.department_color }}
-                          />
-                          <div>
-                            <div className="font-medium">{dept.department_code}</div>
-                            <div className="text-sm text-gray-500">{dept.department_name}</div>
+                  {filteredDepartments.map((dept) => {
+                    const hod = departmentHODs[dept.id];
+                    
+                    return (
+                      <TableRow key={dept.id}>
+                        <TableCell>
+                          <div className="flex items-center space-x-3">
+                            <div 
+                              className="w-3 h-3 rounded-full" 
+                              style={{ backgroundColor: dept.department_color }}
+                            />
+                            <div>
+                              <div className="font-medium">{dept.department_code}</div>
+                              <div className="text-sm text-gray-500">{dept.department_name}</div>
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {dept.hod ?
-                          `${dept.hod.first_name} ${dept.hod.last_name}`
-                          : 'Not Assigned'
-                        }
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <BookOpen className="w-4 h-4 text-gray-400" />
-                          <span>{dept.course_count || 0}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={dept.is_active ? "default" : "secondary"}>
-                          {dept.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleEditClick(dept)}
-                            title="Edit department"
-                          >
-                            <Edit className="w-3 h-3" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => handleManageCourses(dept)}
-                            title="Manage courses"
-                          >
-                            <BookOpen className="w-3 h-3" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => handleDeleteClick(dept)}
-                            title="Delete department"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell>
+                          {hod ? (
+                            <div className="flex items-center gap-2">
+                              <Crown className="w-4 h-4 text-yellow-500" />
+                              <span>{hod.first_name} {hod.last_name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">Not Assigned</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <BookOpen className="w-4 h-4 text-gray-400" />
+                            <span>{dept.course_count || 0}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={dept.is_active ? "default" : "secondary"}>
+                            {dept.is_active ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleEditClick(dept)}
+                              title="Edit department"
+                            >
+                              <Edit className="w-3 h-3" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleManageCourses(dept)}
+                              title="Manage courses"
+                            >
+                              <BookOpen className="w-3 h-3" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleDeleteClick(dept)}
+                              title="Delete department"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -784,11 +913,12 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
             </div>
             <div className="col-span-1 md:col-span-2">
               <Label htmlFor="edit_hod">Head of Department</Label>
-              <Select value={editForm.hod_id} onValueChange={(value) => setEditForm({...editForm, hod_id: value})}>
+              <Select value={editForm.hod_id || "none"} onValueChange={(value) => setEditForm({...editForm, hod_id: value === "none" ? "" : value})}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select faculty member" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="none">No HOD</SelectItem>
                   {facultyMembers.map((faculty) => (
                     <SelectItem key={faculty.id} value={faculty.id}>
                       {faculty.first_name} {faculty.last_name}
@@ -863,7 +993,7 @@ const DepartmentManagement = ({ userProfile }: { userProfile: UserProfile }) => 
               
               <div className="mt-4 p-4 border border-yellow-200 bg-yellow-50 rounded-lg">
                 <p className="text-sm text-yellow-800">
-                  <strong>Warning:</strong> Deleting this department will unassign all {deptToDelete.course_count || 0} course(s) from it. The courses will remain in the system but won't be associated with any department.
+                  <strong>Warning:</strong> Deleting this department will unassign all {deptToDelete.course_count || 0} course(s) from it and delete all communication channels. The courses will remain in the system but won't be associated with any department.
                 </p>
               </div>
             </div>

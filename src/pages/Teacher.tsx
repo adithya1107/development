@@ -263,50 +263,87 @@ const Teacher = () => {
         setIsLoadingFeatures(true);
         console.log('Loading features for teacher:', teacherData.user_id);
         
-        const features = await loadUserFeatures(teacherData.college_id, 'faculty');
+        // FIXED: Use .contains() for array filtering instead of .eq() with array literal
+        const { data: featuresData, error: featuresError } = await supabase
+          .from('feature_configurations')
+          .select(`
+            *,
+            feature_definitions (
+              feature_key,
+              feature_name,
+              icon_name,
+              description
+            )
+          `)
+          .eq('college_id', teacherData.college_id)
+          .contains('target_user_types', ['faculty'])
+          .eq('is_enabled', true)
+          .order('display_order', { ascending: true });
+
+        if (featuresError) throw featuresError;
         
-        if (features.length === 0) {
+        if (!featuresData || featuresData.length === 0) {
           console.warn('No features configured, using defaults');
           setSidebarItems(getDefaultFacultyFeatures());
           setAvailableFeatureKeys(new Set(['dashboard', 'schedule', 'courses', 'communication', 'support']));
         } else {
-          const items = featuresToSidebarItems(features);
+          // Import all lucide-react icons dynamically
+          const iconMap = {
+            GraduationCap, Calendar, BookOpen, ClipboardList, Users, MessageSquare,
+            FileText, TrendingUp, Award, HelpCircle, PlusCircleIcon, Building2Icon, PlusCircle
+          };
+
+          // Convert features to sidebar items with icons from feature_definition
+          const items = featuresData.map((feature) => {
+            const iconName = feature.feature_definitions?.icon_name || 'GraduationCap';
+            const IconComponent = iconMap[iconName] || GraduationCap;
+            
+            return {
+              id: feature.feature_definitions?.feature_key || feature.feature_key,
+              label: feature.feature_definitions?.feature_name || feature.feature_key,
+              icon: IconComponent,
+              enabled: feature.is_enabled,
+              order: feature.display_order
+            };
+          });
           
-          // Add club advisor feature if user has club_advisor tag
-          const hasClubAdvisorAccess = hasTag('club_advisor');
-          if (hasClubAdvisorAccess) {
-            const clubFeature = features.find(f => f.feature_key === 'club');
-            if (clubFeature && !items.find(i => i.id === 'club')) {
+          // Check if user has any tags with context_name 'club'
+          const hasClubTags = userTags.some(tag => tag.context_name === 'club');
+          if (hasClubTags) {
+            const clubFeatureData = featuresData.find(f => f.feature_definitions?.feature_key === 'clubs');
+            if (clubFeatureData && !items.find(i => i.id === 'clubs')) {
+              const iconName = clubFeatureData.feature_definitions?.icon_name || 'Users';
               items.push({
-                id: 'club',
-                label: 'Club Advisor',
-                icon: Users,
+                id: 'clubs',
+                label: clubFeatureData.feature_definitions?.feature_name || 'Club Advisor',
+                icon: iconMap[iconName] || Users,
                 enabled: true,
-                order: items.length
+                order: clubFeatureData.display_order || items.length
               });
             }
           }
           
-          // Add department feature if user is HOD or department member
-          const hasDepartmentAccess = hasAnyTag(['hod', 'department_member']);
-          if (hasDepartmentAccess) {
-            const deptFeature = features.find(f => f.feature_key === 'department');
-            if (deptFeature && !items.find(i => i.id === 'department')) {
+          // Check if user has any tags with context_name 'department'
+          const hasDepartmentTags = userTags.some(tag => tag.context_name === 'department');
+          if (hasDepartmentTags) {
+            const deptFeatureData = featuresData.find(f => f.feature_definitions?.feature_key === 'department');
+            if (deptFeatureData && !items.find(i => i.id === 'department')) {
+              const iconName = deptFeatureData.feature_definitions?.icon_name || 'Building2Icon';
               items.push({
                 id: 'department',
-                label: 'Department',
-                icon: Building2Icon,
+                label: deptFeatureData.feature_definitions?.feature_name || 'Department',
+                icon: iconMap[iconName] || Building2Icon,
                 enabled: true,
-                order: items.length
+                order: deptFeatureData.display_order || items.length
               });
             }
           }
           
           setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
           
-          const featureKeys = new Set(features.map(f => f.feature_key));
-          if (hasClubAdvisorAccess) featureKeys.add('club');
-          if (hasDepartmentAccess) featureKeys.add('department');
+          const featureKeys = new Set(featuresData.map(f => f.feature_definitions?.feature_key || f.feature_key));
+          if (hasClubTags) featureKeys.add('clubs');
+          if (hasDepartmentTags) featureKeys.add('department');
           setAvailableFeatureKeys(featureKeys);
           
           console.log(`Loaded ${items.length} features for teacher`);
@@ -441,22 +478,6 @@ const Teacher = () => {
         return isFeatureAvailable('events')
           ? <TeacherEvents teacherData={teacherData} />
           : <FeatureNotAvailable />;
-      
-      // case 'club':
-      //   if (!hasClubAdvisorAccess) {
-      //     return (
-      //       <div className="flex items-center justify-center h-full">
-      //         <div className="text-center space-y-4">
-      //           <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto" />
-      //           <h3 className="text-xl font-semibold">Access Restricted</h3>
-      //           <p className="text-muted-foreground max-w-md">
-      //             You need to be assigned as a club advisor to access this feature.
-      //           </p>
-      //         </div>
-      //       </div>
-      //     );
-      //   }
-      //   return <ClubAdvisor teacherData={teacherData} userTags={userTags} />;
       
       case 'clubs':
         if (!hasClubAdvisorAccess) {
