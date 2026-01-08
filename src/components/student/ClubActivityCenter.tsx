@@ -18,9 +18,12 @@ import {
   Search
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -83,8 +86,6 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
   const fetchUserClubs = async () => {
     try {
       setLoading(true);
-      
-      console.log('📋 Loading user clubs...');
 
       // Get all club assignments for this user (both member and president)
       const { data: clubAssignments, error: assignError } = await supabase
@@ -509,7 +510,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-role-student" />
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
       </div>
     );
   }
@@ -520,7 +521,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-foreground">Club Activity Center</h1>
         </div>
-        <Card className="bg-card/50 backdrop-blur border-white/10">
+        <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Users className="h-16 w-16 text-muted-foreground mb-4" />
             <h3 className="text-xl font-semibold text-foreground mb-2">No Clubs Found</h3>
@@ -535,33 +536,24 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Header - matching placement style */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Club Activity Center</h1>
-          {selectedClub && clubs.length > 1 && (
-            <p className="text-sm text-muted-foreground mt-1">
-              Currently viewing: <span className="text-role-student font-semibold">{selectedClub.club_name}</span>
-            </p>
-          )}
-          {selectedClub && clubs.length === 1 && (
-            <p className="text-muted-foreground mt-1">
-              {isPresident ? 'Manage your club activities' : 'Stay updated with club announcements and events'}
-            </p>
-          )}
+          <p className="text-muted-foreground mt-1">
+            {selectedClub && clubs.length === 1 
+              ? (isPresident ? 'Manage your club activities' : 'Stay updated with club announcements and events')
+              : 'Manage your club memberships and activities'
+            }
+          </p>
         </div>
         {isPresident && (
           <div className="flex gap-2">
-            <Button
-              onClick={() => setShowCreateAnnouncement(true)}
-            >
+            <Button onClick={() => setShowCreateAnnouncement(true)}>
               <Plus className="h-4 w-4 mr-2" />
               New Announcement
             </Button>
-            <Button
-              onClick={() => setShowCreateEvent(true)}
-              variant="outline"
-            >
+            <Button onClick={() => setShowCreateEvent(true)} variant="outline">
               <Calendar className="h-4 w-4 mr-2" />
               New Event
             </Button>
@@ -569,9 +561,9 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
         )}
       </div>
 
-      {/* Club Selector */}
+      {/* Club Selector - only show if multiple clubs */}
       {clubs.length > 1 && (
-        <Card className="bg-card/50 backdrop-blur border-white/10">
+        <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-sm font-medium text-foreground">
@@ -587,7 +579,6 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   key={club.id}
                   variant={selectedClub?.id === club.id ? 'default' : 'outline'}
                   onClick={() => setSelectedClub(club)}
-                  className={selectedClub?.id === club.id ? 'bg-role-student' : 'border-white/20'}
                 >
                   {club.club_name}
                 </Button>
@@ -597,7 +588,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
         </Card>
       )}
 
-      {/* Stats Cards */}
+      {/* Stats Cards - matching placement grid style */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-6">
@@ -606,12 +597,12 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                 <p className="text-sm text-muted-foreground">Total Announcements</p>
                 <p className="text-2xl font-bold text-foreground mt-1">{announcements.length}</p>
               </div>
-              <Bell className="h-10 w-10 opacity-50" />
+              <Bell className="h-10 w-10 text-blue-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
 
-        <Card >
+        <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -620,12 +611,12 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   {events.filter(e => new Date(e.start_date) > new Date()).length}
                 </p>
               </div>
-              <Calendar className="h-10 w-10 opacity-50" />
+              <Calendar className="h-10 w-10 text-purple-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
 
-        <Card >
+        <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -634,12 +625,12 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   {announcements.filter(a => !a.is_read).length}
                 </p>
               </div>
-              <Eye className="h-10 w-10 opacity-50" />
+              <Eye className="h-10 w-10 text-green-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
 
-        <Card >
+        <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -648,7 +639,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   {isPresident ? 'President' : 'Member'}
                 </p>
               </div>
-              <Award className="h-10 w-10 opacity-50" />
+              <Award className="h-10 w-10 text-orange-500 opacity-50" />
             </div>
           </CardContent>
         </Card>
@@ -656,7 +647,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="announcements" className="space-y-6">
-        <TabsList className="bg-card/50 border border-white/10">
+        <TabsList>
           <TabsTrigger value="announcements">
             <Bell className="h-4 w-4 mr-2" />
             Announcements
@@ -669,22 +660,21 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
 
         {/* Announcements Tab */}
         <TabsContent value="announcements" className="space-y-4">
-          {/* Search and Filter */}
+          {/* Search and Filter - matching placement style */}
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
+              <Input
                 placeholder="Search announcements..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
+                className="pl-10"
               />
             </div>
             <select
               value={filterType}
               onChange={(e) => setFilterType(e.target.value)}
-              className="px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
+              className="px-4 py-2 border rounded-lg text-black"
             >
               <option value="all">All Types</option>
               <option value="general">General</option>
@@ -698,7 +688,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
           {/* Announcements List */}
           <div className="space-y-4">
             {filteredAnnouncements.length === 0 ? (
-              <Card className="bg-card/50 backdrop-blur border-white/10">
+              <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <Bell className="h-12 w-12 text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">No announcements found</p>
@@ -708,8 +698,8 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
               filteredAnnouncements.map((announcement) => (
                 <Card
                   key={announcement.id}
-                  className={`bg-card/50 backdrop-blur border-white/10 transition-all hover:border-role-student/50 ${
-                    !announcement.is_read ? 'ring-2' : ''
+                  className={`transition-all hover:shadow-md ${
+                    !announcement.is_read ? 'border-l-4 border-l-blue-500' : ''
                   }`}
                   onClick={() => !announcement.is_read && markAnnouncementAsRead(announcement.id)}
                 >
@@ -724,7 +714,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                             {announcement.announcement_type}
                           </Badge>
                           {!announcement.is_read && (
-                            <Badge >
+                            <Badge className="bg-blue-500/20 text-blue-400">
                               New
                             </Badge>
                           )}
@@ -772,7 +762,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                               e.stopPropagation();
                               handleDeleteAnnouncement(announcement.id);
                             }}
-                            className="h-8 w-8 p-0"
+                            className="h-8 w-8 p-0 hover:bg-red-500/10 hover:text-red-500"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -783,7 +773,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   <CardContent>
                     <p className="text-muted-foreground whitespace-pre-wrap">{announcement.content}</p>
                     {announcement.expires_at && (
-                      <div className="mt-4 flex items-center gap-2 text-sm">
+                      <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
                         <AlertCircle className="h-4 w-4" />
                         Expires on {new Date(announcement.expires_at).toLocaleDateString()}
                       </div>
@@ -799,7 +789,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
         <TabsContent value="events" className="space-y-4">
           <div className="space-y-4">
             {events.length === 0 ? (
-              <Card className="bg-card/50 backdrop-blur border-white/10">
+              <Card>
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">No events scheduled</p>
@@ -813,7 +803,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                 return (
                   <Card
                     key={event.id}
-                    className={`bg-card/50 backdrop-blur border-white/10 transition-all hover:border-role-student/50 ${
+                    className={`transition-all hover:shadow-md ${
                       isPast ? 'opacity-60' : ''
                     }`}
                   >
@@ -825,17 +815,17 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                               {event.event_type}
                             </Badge>
                             {isUpcoming && (
-                              <Badge >
+                              <Badge className="bg-green-500/20 text-green-400">
                                 Upcoming
                               </Badge>
                             )}
                             {isPast && (
-                              <Badge >
+                              <Badge variant="outline">
                                 Past
                               </Badge>
                             )}
                             {event.user_registered && (
-                              <Badge >
+                              <Badge className="bg-blue-500/20 text-blue-400">
                                 <CheckCircle className="h-3 w-3 mr-1" />
                                 Registered
                               </Badge>
@@ -895,9 +885,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                               </p>
                             )}
                           </div>
-                          <Button
-                            onClick={() => handleRegisterForEvent(event.id)}
-                          >
+                          <Button onClick={() => handleRegisterForEvent(event.id)}>
                             Register Now
                           </Button>
                         </div>
@@ -913,8 +901,8 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
 
       {/* Create/Edit Announcement Modal */}
       {(showCreateAnnouncement || editingAnnouncement) && (
-        <div className="fixed inset-0 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-2xl bg-background border-white/20 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>
@@ -942,42 +930,39 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
             <CardContent>
               <form onSubmit={editingAnnouncement ? handleUpdateAnnouncement : handleCreateAnnouncement} className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Title *
-                  </label>
-                  <input
+                  <Label htmlFor="title">Title *</Label>
+                  <Input
+                    id="title"
                     type="text"
                     required
                     value={announcementForm.title}
                     onChange={(e) => setAnnouncementForm({ ...announcementForm, title: e.target.value })}
-                    className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
                     placeholder="Enter announcement title"
+                    className="mt-1"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Content *
-                  </label>
-                  <textarea
+                  <Label htmlFor="content">Content *</Label>
+                  <Textarea
+                    id="content"
                     required
                     value={announcementForm.content}
                     onChange={(e) => setAnnouncementForm({ ...announcementForm, content: e.target.value })}
                     rows={6}
-                    className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student resize-none"
                     placeholder="Enter announcement content"
+                    className="mt-1"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">
-                      Type
-                    </label>
+                    <Label htmlFor="announcement_type">Type</Label>
                     <select
+                      id="announcement_type"
                       value={announcementForm.announcement_type}
                       onChange={(e) => setAnnouncementForm({ ...announcementForm, announcement_type: e.target.value })}
-                      className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
+                      className="w-full px-4 py-2 border rounded-lg mt-1"
                     >
                       <option value="general">General</option>
                       <option value="event">Event</option>
@@ -988,13 +973,12 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">
-                      Priority
-                    </label>
+                    <Label htmlFor="priority">Priority</Label>
                     <select
+                      id="priority"
                       value={announcementForm.priority}
                       onChange={(e) => setAnnouncementForm({ ...announcementForm, priority: e.target.value })}
-                      className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
+                      className="w-full px-4 py-2 border rounded-lg mt-1"
                     >
                       <option value="low">Low</option>
                       <option value="normal">Normal</option>
@@ -1005,22 +989,18 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Expiration Date (Optional)
-                  </label>
-                  <input
+                  <Label htmlFor="expires_at">Expiration Date (Optional)</Label>
+                  <Input
+                    id="expires_at"
                     type="datetime-local"
                     value={announcementForm.expires_at}
                     onChange={(e) => setAnnouncementForm({ ...announcementForm, expires_at: e.target.value })}
-                    className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
+                    className="mt-1"
                   />
                 </div>
 
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                  >
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button type="submit" className="flex-1">
                     <Save className="h-4 w-4 mr-2" />
                     {editingAnnouncement ? 'Update' : 'Create'} Announcement
                   </Button>
@@ -1038,7 +1018,6 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                         expires_at: ''
                       });
                     }}
-                    className="border-white/20"
                   >
                     Cancel
                   </Button>
@@ -1052,7 +1031,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
       {/* Create Event Modal */}
       {showCreateEvent && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <Card className="w-full max-w-2xl bg-background border-white/20 max-h-[90vh] overflow-y-auto">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Create New Event</CardTitle>
@@ -1081,40 +1060,37 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
             <CardContent>
               <form onSubmit={handleCreateEvent} className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Event Name *
-                  </label>
-                  <input
+                  <Label htmlFor="event_name">Event Name *</Label>
+                  <Input
+                    id="event_name"
                     type="text"
                     required
                     value={eventForm.event_name}
                     onChange={(e) => setEventForm({ ...eventForm, event_name: e.target.value })}
-                    className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
                     placeholder="Enter event name"
+                    className="mt-1"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Description
-                  </label>
-                  <textarea
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
                     value={eventForm.description}
                     onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
                     rows={4}
-                    className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student resize-none"
                     placeholder="Enter event description"
+                    className="mt-1"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Event Type
-                  </label>
+                  <Label htmlFor="event_type">Event Type</Label>
                   <select
+                    id="event_type"
                     value={eventForm.event_type}
                     onChange={(e) => setEventForm({ ...eventForm, event_type: e.target.value })}
-                    className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
+                    className="w-full px-4 py-2 border rounded-lg mt-1"
                   >
                     <option value="meeting">Meeting</option>
                     <option value="workshop">Workshop</option>
@@ -1127,42 +1103,39 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">
-                      Start Date & Time *
-                    </label>
-                    <input
+                    <Label htmlFor="start_date">Start Date & Time *</Label>
+                    <Input
+                      id="start_date"
                       type="datetime-local"
                       required
                       value={eventForm.start_date}
                       onChange={(e) => setEventForm({ ...eventForm, start_date: e.target.value })}
-                      className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
+                      className="mt-1"
                     />
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">
-                      End Date & Time *
-                    </label>
-                    <input
+                    <Label htmlFor="end_date">End Date & Time *</Label>
+                    <Input
+                      id="end_date"
                       type="datetime-local"
                       required
                       value={eventForm.end_date}
                       onChange={(e) => setEventForm({ ...eventForm, end_date: e.target.value })}
-                      className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
+                      className="mt-1"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Location
-                  </label>
-                  <input
+                  <Label htmlFor="location">Location</Label>
+                  <Input
+                    id="location"
                     type="text"
                     value={eventForm.location}
                     onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
-                    className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
                     placeholder="Enter event location"
+                    className="mt-1"
                   />
                 </div>
 
@@ -1172,7 +1145,7 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                       type="checkbox"
                       checked={eventForm.registration_required}
                       onChange={(e) => setEventForm({ ...eventForm, registration_required: e.target.checked })}
-                      className="w-4 h-4 text-role-student bg-card/50 border-white/10 rounded focus:ring-role-student"
+                      className="w-4 h-4 rounded"
                     />
                     <span className="text-sm text-foreground">Registration Required</span>
                   </label>
@@ -1181,38 +1154,33 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                 {eventForm.registration_required && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Max Participants
-                      </label>
-                      <input
+                      <Label htmlFor="max_participants">Max Participants</Label>
+                      <Input
+                        id="max_participants"
                         type="number"
                         min="1"
                         value={eventForm.max_participants}
                         onChange={(e) => setEventForm({ ...eventForm, max_participants: e.target.value })}
-                        className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
                         placeholder="Leave empty for unlimited"
+                        className="mt-1"
                       />
                     </div>
 
                     <div>
-                      <label className="text-sm font-medium text-foreground mb-2 block">
-                        Registration Deadline
-                      </label>
-                      <input
+                      <Label htmlFor="registration_deadline">Registration Deadline</Label>
+                      <Input
+                        id="registration_deadline"
                         type="datetime-local"
                         value={eventForm.registration_deadline}
                         onChange={(e) => setEventForm({ ...eventForm, registration_deadline: e.target.value })}
-                        className="w-full px-4 py-2 bg-card/50 border border-white/10 rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-role-student"
+                        className="mt-1"
                       />
                     </div>
                   </div>
                 )}
 
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                  >
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button type="submit" className="flex-1">
                     <Save className="h-4 w-4 mr-2" />
                     Create Event
                   </Button>
@@ -1233,7 +1201,6 @@ const ClubActivityCenter: React.FC<ClubActivityCenterProps> = ({ studentData }) 
                         registration_deadline: ''
                       });
                     }}
-                    className="border-white/20"
                   >
                     Cancel
                   </Button>

@@ -672,7 +672,7 @@ const Admin = () => {
             </div>
 
             <div className="flex items-center space-x-2 sm:space-x-3">
-              <div className="relative" ref={notificationRef}>
+              {/* <div className="relative" ref={notificationRef}>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -739,7 +739,7 @@ const Admin = () => {
                     </div>
                   </div>
                 )}
-              </div>
+              </div> */}
 
               <div className="relative" ref={userMenuRef}>
                 <Button

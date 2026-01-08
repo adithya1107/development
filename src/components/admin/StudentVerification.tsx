@@ -35,6 +35,103 @@ interface StudentVerificationProps {
   adminRoles: AdminRole[];
 }
 
+// InfoField component moved outside to prevent cursor loss
+const InfoField = ({ 
+  label, 
+  value, 
+  icon: Icon, 
+  field, 
+  type = 'text',
+  isEditMode,
+  formData,
+  setFormData,
+  departments 
+}: any) => (
+  <div>
+    <Label className="flex items-center space-x-2 mb-2">
+      <Icon className="w-4 h-4" />
+      <span>{label}</span>
+    </Label>
+    {isEditMode ? (
+      type === 'select' ? (
+        <Select value={formData[field] || ''} onValueChange={(val) => setFormData((prev: any) => ({ ...prev, [field]: val }))}>
+          <SelectTrigger>
+            <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
+          </SelectTrigger>
+          <SelectContent>
+            {field === 'gender' && (
+              <>
+                <SelectItem value="Male">Male</SelectItem>
+                <SelectItem value="Female">Female</SelectItem>
+                <SelectItem value="Other">Other</SelectItem>
+              </>
+            )}
+            {field === 'blood_group' && (
+              <>
+                <SelectItem value="A+">A+</SelectItem>
+                <SelectItem value="A-">A-</SelectItem>
+                <SelectItem value="B+">B+</SelectItem>
+                <SelectItem value="B-">B-</SelectItem>
+                <SelectItem value="AB+">AB+</SelectItem>
+                <SelectItem value="AB-">AB-</SelectItem>
+                <SelectItem value="O+">O+</SelectItem>
+                <SelectItem value="O-">O-</SelectItem>
+              </>
+            )}
+            {field === 'category' && (
+              <>
+                <SelectItem value="General">General</SelectItem>
+                <SelectItem value="OBC">OBC</SelectItem>
+                <SelectItem value="SC">SC</SelectItem>
+                <SelectItem value="ST">ST</SelectItem>
+                <SelectItem value="EWS">EWS</SelectItem>
+              </>
+            )}
+            {field === 'mess_pref' && (
+              <>
+                <SelectItem value="veg">Vegetarian</SelectItem>
+                <SelectItem value="nveg">Non-Vegetarian</SelectItem>
+              </>
+            )}
+            {field === 'disability_status' && (
+              <>
+                <SelectItem value="true">Yes</SelectItem>
+                <SelectItem value="false">No</SelectItem>
+              </>
+            )}
+          </SelectContent>
+        </Select>
+      ) : type === 'department' ? (
+        <Select 
+          value={formData[field] || ''} 
+          onValueChange={(val) => setFormData((prev: any) => ({ ...prev, [field]: val }))}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select department" />
+          </SelectTrigger>
+          <SelectContent>
+            {departments?.map((dept: any) => (
+              <SelectItem key={dept.id} value={dept.id}>
+                {dept.department_name} ({dept.department_code})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <Input
+          type={type}
+          value={formData[field] || ''}
+          onChange={(e) => setFormData((prev: any) => ({ ...prev, [field]: e.target.value }))}
+        />
+      )
+    ) : (
+      <p className="text-sm px-3 py-2 rounded-md border">
+        {value || 'Not provided'}
+      </p>
+    )}
+  </div>
+);
+
 const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, adminRoles }) => {
   const [activeTab, setActiveTab] = useState('pending');
   const [students, setStudents] = useState<any[]>([]);
@@ -98,53 +195,88 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
     try {
       setIsLoading(true);
 
-      // Fix: Specify the exact relationship using the foreign key name
-      const { data: studentData, error } = await supabase
+      // Step 1: Get all student user profiles from the college
+      const { data: userProfiles, error: profilesError } = await supabase
+        .from('user_profiles')
+        .select('id, user_code, email, first_name, last_name, college_id')
+        .eq('college_id', userProfile.college_id)
+        .eq('user_type', 'student')
+        .order('created_at', { ascending: false });
+
+      if (profilesError) throw profilesError;
+
+      // Step 2: Get all student table entries for these users
+      const userIds = (userProfiles || []).map(u => u.id);
+      
+      const { data: studentData, error: studentError } = await supabase
         .from('student')
         .select(`
           *,
-          user_profiles!student_id_fkey_user_profiles (
-            user_code,
-            email,
-            first_name,
-            last_name,
-            college_id
-          ),
           departments (
             id,
             department_name,
             department_code
           )
         `)
-        .eq('user_profiles.college_id', userProfile.college_id)
-        .eq('verification_status', activeTab)
-        .order('created_at', { ascending: false });
+        .in('id', userIds);
 
-      if (error) {
-        console.error('Supabase error:', error);
-        throw error;
-      }
+      if (studentError) throw studentError;
 
-      const studentsWithCompletion = await Promise.all(
-        (studentData || []).map(async (student) => {
+      // Step 3: Create a map of student data
+      const studentMap = new Map((studentData || []).map(s => [s.id, s]));
+
+      // Step 4: Combine user profiles with student data
+      const combinedStudents = (userProfiles || []).map(profile => {
+        const studentInfo = studentMap.get(profile.id);
+        
+        // Determine verification status
+        let verificationStatus = 'pending';
+        let profileCompletionPercentage = 0;
+        
+        if (studentInfo) {
+          // Student has an entry in student table
+          verificationStatus = studentInfo.verification_status || 'incomplete';
+          
           // Calculate profile completion
-          let completionPercentage = 0;
           const requiredFields = [
             'name', 'dob', 'gender', 'blood_group', 'category', 
             'aadhar_number', 'contact_information', 'address', 'department_id'
           ];
           
-          const filledFields = requiredFields.filter(field => student[field]);
-          completionPercentage = (filledFields.length / requiredFields.length) * 100;
+          const filledFields = requiredFields.filter(field => studentInfo[field]);
+          profileCompletionPercentage = Math.round((filledFields.length / requiredFields.length) * 100);
+        } else {
+          // No student entry - this is a new/pending student
+          verificationStatus = 'pending';
+          profileCompletionPercentage = 0;
+        }
 
-          return {
-            ...student,
-            profile_completion_percentage: Math.round(completionPercentage)
-          };
-        })
-      );
+        return {
+          id: profile.id,
+          user_profiles: profile,
+          ...studentInfo,
+          verification_status: verificationStatus,
+          profile_completion_percentage: profileCompletionPercentage,
+          has_student_entry: !!studentInfo
+        };
+      });
 
-      setStudents(studentsWithCompletion);
+      // Step 5: Filter based on active tab
+      const filteredByStatus = combinedStudents.filter(student => {
+        if (activeTab === 'pending') {
+          // Pending: No student entry OR has entry with pending status
+          return !student.has_student_entry || student.verification_status === 'pending';
+        } else if (activeTab === 'incomplete') {
+          // Incomplete: Has student entry but not complete
+          return student.has_student_entry && 
+                 student.verification_status === 'incomplete';
+        } else {
+          // Verified or Rejected
+          return student.verification_status === activeTab;
+        }
+      });
+
+      setStudents(filteredByStatus);
     } catch (error) {
       console.error('Error loading students:', error);
       toast({
@@ -157,24 +289,59 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
     }
   };
 
+  const createStudentEntry = async (userId: string) => {
+    try {
+      // Create a basic student entry
+      const { data, error } = await supabase
+        .from('student')
+        .insert({
+          id: userId,
+          verification_status: 'incomplete',
+          profile_completion_percentage: 0,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error creating student entry:', error);
+      throw error;
+    }
+  };
+
   const loadFullStudentData = async () => {
     if (!selectedStudent) return;
     
     try {
-      const { data: studentData, error: studentError } = await supabase
-        .from('student')
-        .select(`
-          *,
-          departments (
-            id,
-            department_name,
-            department_code
-          )
-        `)
-        .eq('id', selectedStudent.id)
-        .single();
+      // Check if student entry exists, if not create one
+      let studentData = null;
+      
+      if (selectedStudent.has_student_entry) {
+        const { data, error } = await supabase
+          .from('student')
+          .select(`
+            *,
+            departments (
+              id,
+              department_name,
+              department_code
+            )
+          `)
+          .eq('id', selectedStudent.id)
+          .single();
 
-      if (studentError) throw studentError;
+        if (error) throw error;
+        studentData = data;
+      } else {
+        // Create a new student entry
+        studentData = await createStudentEntry(selectedStudent.id);
+        toast({
+          title: "Student Entry Created",
+          description: "A new student profile has been initialized.",
+        });
+      }
 
       const { data: educationData } = await supabase
         .from('education_history')
@@ -332,7 +499,6 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
   const handleVerifyStudent = async () => {
     if (!selectedStudent) return;
 
-    // Check if department is assigned
     if (!formData.department_id) {
       toast({
         title: "Department Required",
@@ -472,7 +638,6 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
   const handleSaveInfo = async () => {
     if (!selectedStudent) return;
 
-    // Validate department
     if (!formData.department_id) {
       toast({
         title: "Department Required",
@@ -645,7 +810,6 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
     try {
       setProcessingDoc(docId);
 
-      // Simulate AI verification with random score
       const aiScore = Math.random() * 100;
       const aiDetails = {
         confidence: aiScore,
@@ -728,7 +892,7 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
   const getStatusBadge = (status: string) => {
     const badges = {
       pending: <Badge className="text-yellow-800 ">Pending</Badge>,
-      incomplete: <Badge className="text-orange-800 ">Incomplete</Badge>,
+      incomplete: <Badge className=" text-orange-800">Incomplete</Badge>,
       verified: <Badge className=" text-green-800 ">Verified</Badge>,
       rejected: <Badge className=" text-red-800 ">Rejected</Badge>
     };
@@ -741,98 +905,12 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
     return 'text-red-600';
   };
 
-  const InfoField = ({ label, value, icon: Icon, field, type = 'text' }: any) => (
-    <div>
-      <Label className="flex items-center space-x-2 mb-2">
-        <Icon className="w-4 h-4" />
-        <span>{label}</span>
-      </Label>
-      {isEditMode ? (
-        type === 'select' ? (
-          <Select value={formData[field] || ''} onValueChange={(val) => setFormData((prev: any) => ({ ...prev, [field]: val }))}>
-            <SelectTrigger>
-              <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
-            </SelectTrigger>
-            <SelectContent>
-              {field === 'gender' && (
-                <>
-                  <SelectItem value="Male">Male</SelectItem>
-                  <SelectItem value="Female">Female</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </>
-              )}
-              {field === 'blood_group' && (
-                <>
-                  <SelectItem value="A+">A+</SelectItem>
-                  <SelectItem value="A-">A-</SelectItem>
-                  <SelectItem value="B+">B+</SelectItem>
-                  <SelectItem value="B-">B-</SelectItem>
-                  <SelectItem value="AB+">AB+</SelectItem>
-                  <SelectItem value="AB-">AB-</SelectItem>
-                  <SelectItem value="O+">O+</SelectItem>
-                  <SelectItem value="O-">O-</SelectItem>
-                </>
-              )}
-              {field === 'category' && (
-                <>
-                  <SelectItem value="General">General</SelectItem>
-                  <SelectItem value="OBC">OBC</SelectItem>
-                  <SelectItem value="SC">SC</SelectItem>
-                  <SelectItem value="ST">ST</SelectItem>
-                  <SelectItem value="EWS">EWS</SelectItem>
-                </>
-              )}
-              {field === 'mess_pref' && (
-                <>
-                  <SelectItem value="veg">Vegetarian</SelectItem>
-                  <SelectItem value="nveg">Non-Vegetarian</SelectItem>
-                </>
-              )}
-              {field === 'disability_status' && (
-                <>
-                  <SelectItem value="true">Yes</SelectItem>
-                  <SelectItem value="false">No</SelectItem>
-                </>
-              )}
-            </SelectContent>
-          </Select>
-        ) : type === 'department' ? (
-          <Select 
-            value={formData[field] || ''} 
-            onValueChange={(val) => setFormData((prev: any) => ({ ...prev, [field]: val }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select department" />
-            </SelectTrigger>
-            <SelectContent>
-              {departments.map((dept) => (
-                <SelectItem key={dept.id} value={dept.id}>
-                  {dept.department_name} ({dept.department_code})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          <Input
-            type={type}
-            value={formData[field] || ''}
-            onChange={(e) => setFormData((prev: any) => ({ ...prev, [field]: e.target.value }))}
-          />
-        )
-      ) : (
-        <p className="text-sm px-3 py-2 rounded-md border">
-          {value || 'Not provided'}
-        </p>
-      )}
-    </div>
-  );
-
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Student Verification</h1>
-          <p className="mt-1">Manage and verify student profiles and documents</p>
+          <p className=" mt-1">Manage and verify student profiles and documents</p>
         </div>
         <Button
           variant="outline"
@@ -871,12 +949,15 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
               <span>{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Students</span>
             </CardTitle>
             <CardDescription>
-              Review and manage student verification requests
+              {activeTab === 'pending' && 'New students awaiting initial verification'}
+              {activeTab === 'incomplete' && 'Students with incomplete profile information'}
+              {activeTab === 'verified' && 'Fully verified students'}
+              {activeTab === 'rejected' && 'Students whose verification was rejected'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <Input
                 placeholder="Search by name, enrollment, code, email, or department..."
                 value={searchTerm}
@@ -888,14 +969,14 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
             {isLoading ? (
               <div className="text-center py-12">
                 <Loader2 className="animate-spin h-12 w-12 mx-auto mb-4" />
-                <p className="text-gray-600 font-medium">Loading students...</p>
+                <p className=" font-medium">Loading students...</p>
               </div>
             ) : (
               <>
                 <div className="rounded-md border overflow-x-auto">
                   <Table>
                     <TableHeader>
-                      <TableRow>
+                      <TableRow >
                         <TableHead className="font-semibold">Student Details</TableHead>
                         <TableHead className="font-semibold">User Code</TableHead>
                         <TableHead className="font-semibold">Department</TableHead>
@@ -911,13 +992,22 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                         <TableRow key={student.id}>
                           <TableCell>
                             <div>
-                              <div className="font-medium">{student.name || 'N/A'}</div>
-                              <div className="text-sm text-gray-500">
+                              <div className="font-medium">
+                                {student.name || `${student.user_profiles?.first_name} ${student.user_profiles?.last_name}`}
+                              </div>
+                              <div className="text-sm ">
                                 {student.user_profiles?.email || 'No email'}
                               </div>
-                              <div className="text-xs mt-1">
-                                DOB: {student.dob ? new Date(student.dob).toLocaleDateString() : 'N/A'}
-                              </div>
+                              {student.dob && (
+                                <div className="text-xs  mt-1">
+                                  DOB: {new Date(student.dob).toLocaleDateString()}
+                                </div>
+                              )}
+                              {!student.has_student_entry && (
+                                <Badge variant="outline" className="mt-1 text-xs">
+                                  New Registration
+                                </Badge>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="font-mono text-sm">
@@ -936,7 +1026,7 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                             )}
                           </TableCell>
                           <TableCell className="font-mono text-sm">
-                            {student.enrollment_number || 'Not assigned'}
+                            {student.enrollment_number || <span>Not assigned</span>}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center space-x-2">
@@ -957,12 +1047,12 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                           </TableCell>
                           <TableCell>
                             {student.documents_verified ? (
-                              <Badge >
+                              <Badge className=" text-green-800 ">
                                 <CheckCircle className="w-3 h-3 mr-1" />
                                 Verified
                               </Badge>
                             ) : (
-                              <Badge>
+                              <Badge className="text-yellow-800 ">
                                 <AlertCircle className="w-3 h-3 mr-1" />
                                 Pending
                               </Badge>
@@ -994,9 +1084,9 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
 
                 {filteredStudents.length === 0 && (
                   <div className="text-center py-12">
-                    <FileText className="w-16 h-16 mx-auto mb-4" />
-                    <p className="font-medium">No {activeTab} students found.</p>
-                    <p className="text-sm mt-1">Try adjusting your search or filters.</p>
+                    <FileText className="w-16 h-16 mx-auto mb-4 " />
+                    <p className=" font-medium">No {activeTab} students found.</p>
+                    <p className="text-sm  mt-1">Try adjusting your search or filters.</p>
                   </div>
                 )}
               </>
@@ -1005,7 +1095,7 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
         </Card>
       </Tabs>
 
-      {/* Detail View Dialog */}
+      {/* Detail View Dialog - keeping the same as before */}
       {selectedStudent && fullStudentData && (
         <Dialog open={isDetailViewOpen} onOpenChange={setIsDetailViewOpen}>
           <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -1014,8 +1104,8 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                 <div className="flex items-center space-x-3">
                   <User className="w-6 h-6" />
                   <div>
-                    <div className="text-xl font-bold">{fullStudentData.name}</div>
-                    <div className="text-sm font-normal">
+                    <div className="text-xl font-bold">{fullStudentData.name || 'New Student'}</div>
+                    <div className="text-sm font-normal text-gray-600">
                       {fullStudentData.user_profile?.email}
                     </div>
                   </div>
@@ -1049,7 +1139,6 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                 </TabsTrigger>
               </TabsList>
 
-              {/* Information Tab */}
               <TabsContent value="info" className="space-y-4">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between">
@@ -1093,7 +1182,6 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    {/* Department Field - Highlighted */}
                     <div className="border-2 p-4 rounded-lg">
                       <InfoField 
                         label="Department" 
@@ -1104,6 +1192,10 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                         icon={Building} 
                         field="department_id"
                         type="department"
+                        isEditMode={isEditMode}
+                        formData={formData}
+                        setFormData={setFormData}
+                        departments={departments}
                       />
                       {!fullStudentData.department_id && (
                         <Alert className="mt-2" variant="destructive">
@@ -1116,22 +1208,22 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      <InfoField label="Full Name" value={fullStudentData.name} icon={User} field="name" />
-                      <InfoField label="Date of Birth" value={fullStudentData.dob} icon={Calendar} field="dob" type="date" />
-                      <InfoField label="Gender" value={fullStudentData.gender} icon={User} field="gender" type="select" />
-                      <InfoField label="Blood Group" value={fullStudentData.blood_group} icon={Droplet} field="blood_group" type="select" />
-                      <InfoField label="Category" value={fullStudentData.category} icon={Users} field="category" type="select" />
-                      <InfoField label="Aadhar Number" value={fullStudentData.aadhar_number} icon={CreditCard} field="aadhar_number" />
-                      <InfoField label="PAN" value={fullStudentData.pan} icon={CreditCard} field="pan" />
-                      <InfoField label="Contact" value={fullStudentData.contact_information} icon={Phone} field="contact_information" type="tel" />
-                      <InfoField label="Emergency Contact" value={fullStudentData.emergency_contacts} icon={Phone} field="emergency_contacts" type="tel" />
-                      <InfoField label="Nationality" value={fullStudentData.nationality} icon={MapPin} field="nationality" />
-                      <InfoField label="Religion" value={fullStudentData.religion} icon={BookOpen} field="religion" />
-                      <InfoField label="Caste" value={fullStudentData.caste} icon={BookOpen} field="caste" />
-                      <InfoField label="Mother Tongue" value={fullStudentData.mother_tongue} icon={BookOpen} field="mother_tongue" />
-                      <InfoField label="Enrollment Number" value={fullStudentData.enrollment_number} icon={FileText} field="enrollment_number" />
-                      <InfoField label="Admission Date" value={fullStudentData.admission_date} icon={Calendar} field="admission_date" type="date" />
-                      <InfoField label="Previous Institution" value={fullStudentData.previous_institution} icon={Building} field="previous_institution" />
+                      <InfoField label="Full Name" value={fullStudentData.name} icon={User} field="name" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Date of Birth" value={fullStudentData.dob} icon={Calendar} field="dob" type="date" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Gender" value={fullStudentData.gender} icon={User} field="gender" type="select" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Blood Group" value={fullStudentData.blood_group} icon={Droplet} field="blood_group" type="select" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Category" value={fullStudentData.category} icon={Users} field="category" type="select" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Aadhar Number" value={fullStudentData.aadhar_number} icon={CreditCard} field="aadhar_number" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="PAN" value={fullStudentData.pan} icon={CreditCard} field="pan" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Contact" value={fullStudentData.contact_information} icon={Phone} field="contact_information" type="tel" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Emergency Contact" value={fullStudentData.emergency_contacts} icon={Phone} field="emergency_contacts" type="tel" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Nationality" value={fullStudentData.nationality} icon={MapPin} field="nationality" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Religion" value={fullStudentData.religion} icon={BookOpen} field="religion" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Caste" value={fullStudentData.caste} icon={BookOpen} field="caste" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Mother Tongue" value={fullStudentData.mother_tongue} icon={BookOpen} field="mother_tongue" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Enrollment Number" value={fullStudentData.enrollment_number} icon={FileText} field="enrollment_number" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Admission Date" value={fullStudentData.admission_date} icon={Calendar} field="admission_date" type="date" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                      <InfoField label="Previous Institution" value={fullStudentData.previous_institution} icon={Building} field="previous_institution" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
                     </div>
 
                     <div className="border-t pt-4">
@@ -1140,10 +1232,10 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                         Guardian Information
                       </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <InfoField label="Guardian Name" value={fullStudentData.guardian_name} icon={User} field="guardian_name" />
-                        <InfoField label="Relation" value={fullStudentData.guardian_relation} icon={Users} field="guardian_relation" />
-                        <InfoField label="Guardian Contact" value={fullStudentData.guardian_contact} icon={Phone} field="guardian_contact" type="tel" />
-                        <InfoField label="Guardian Occupation" value={fullStudentData.guardian_occupation} icon={Building} field="guardian_occupation" />
+                        <InfoField label="Guardian Name" value={fullStudentData.guardian_name} icon={User} field="guardian_name" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                        <InfoField label="Relation" value={fullStudentData.guardian_relation} icon={Users} field="guardian_relation" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                        <InfoField label="Guardian Contact" value={fullStudentData.guardian_contact} icon={Phone} field="guardian_contact" type="tel" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                        <InfoField label="Guardian Occupation" value={fullStudentData.guardian_occupation} icon={Building} field="guardian_occupation" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
                       </div>
                     </div>
 
@@ -1154,7 +1246,6 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                       </h4>
                       <div>
                         <Label className="flex items-center space-x-2 mb-2">
-                          <MapPin className="w-4 h-4" />
                           <span>Residential Address</span>
                         </Label>
                         {isEditMode ? (
@@ -1178,9 +1269,9 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                           Hostel Information
                         </h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <InfoField label="Hostel Building" value={fullStudentData.hostel_building} icon={Building} field="hostel_building" />
-                          <InfoField label="Room Number" value={fullStudentData.room_number} icon={Home} field="room_number" />
-                          <InfoField label="Mess Preference" value={fullStudentData.mess_pref} icon={Utensils} field="mess_pref" type="select" />
+                          <InfoField label="Hostel Building" value={fullStudentData.hostel_building} icon={Building} field="hostel_building" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                          <InfoField label="Room Number" value={fullStudentData.room_number} icon={Home} field="room_number" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
+                          <InfoField label="Mess Preference" value={fullStudentData.mess_pref} icon={Utensils} field="mess_pref" type="select" isEditMode={isEditMode} formData={formData} setFormData={setFormData} departments={departments} />
                         </div>
                       </div>
                     )}
@@ -1191,19 +1282,18 @@ const StudentVerification: React.FC<StudentVerificationProps> = ({ userProfile, 
                         value={fullStudentData.disability_status ? 'Yes' : 'No'} 
                         icon={Shield} 
                         field="disability_status" 
-                        type="select" 
+                        type="select"
+                        isEditMode={isEditMode}
+                        formData={formData}
+                        setFormData={setFormData}
+                        departments={departments}
                       />
                     </div>
                   </CardContent>
                 </Card>
               </TabsContent>
-
-              {/* Rest of the tabs remain the same as before - Documents, Education, History */}
-              {/* ... (keeping the previous implementation for these tabs) ... */}
-
             </Tabs>
 
-            {/* Verification Actions */}
             <Card className="border-2">
               <CardHeader>
                 <CardTitle>Verification Actions</CardTitle>

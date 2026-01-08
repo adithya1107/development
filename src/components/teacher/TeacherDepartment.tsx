@@ -185,9 +185,9 @@ const TeacherDepartment = ({
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
-        table: 'department_messages' // 🔥 CORRECT TABLE NAME
+        table: 'department_messages' 
       }, async (payload) => {
-        console.log('📨 Real-time message INSERT received:', {
+        console.log('Real-time message INSERT received:', {
           id: payload.new.id,
           channel_id: payload.new.channel_id,
           current_channel: selectedChannelIdRef.current,
@@ -196,7 +196,6 @@ const TeacherDepartment = ({
         
         // 🔥 KEY FIX: Use ref instead of state to check channel match
         if (payload.new.channel_id === selectedChannelIdRef.current) {
-          console.log('✅ Message is for current channel, fetching full data');
           
           // Fetch full message data with sender info
           const { data: fullMessage } = await supabase
@@ -217,17 +216,13 @@ const TeacherDepartment = ({
             setMessages((prev) => {
               const exists = prev.some(msg => msg.id === fullMessage.id);
               if (exists) {
-                console.log('⚠️ Duplicate message detected, replacing');
                 return prev.map(msg => msg.id === fullMessage.id ? fullMessage : msg);
               }
-              console.log('✅ Adding new message to state');
               return [...prev, fullMessage];
             });
             
             setTimeout(scrollToBottom, 100);
           }
-        } else {
-          console.log('⏭️ Message is for different channel, ignoring');
         }
       })
       .on('postgres_changes', {
@@ -246,19 +241,15 @@ const TeacherDepartment = ({
         console.log('📡 Subscription status:', status);
         if (status === 'SUBSCRIBED') {
           setRealtimeStatus('connected');
-          console.log('✅ Successfully subscribed to department messages');
         } else if (status === 'CHANNEL_ERROR') {
           setRealtimeStatus('error');
-          console.error('❌ Channel subscription error');
         } else if (status === 'TIMED_OUT') {
           setRealtimeStatus('disconnected');
-          console.warn('⏱️ Subscription timed out');
         }
       });
 
     messageSubscriptionRef.current = subscription;
     setRealtimeStatus('connecting');
-    console.log('✅ Realtime subscription active');
 
     return () => {
       console.log('🧹 Cleaning up subscription on unmount/channel change');
@@ -274,7 +265,6 @@ const TeacherDepartment = ({
   const loadAllDepartments = async (userId: string) => {
     try {
       setLoading(true);
-      console.log('📋 Loading all departments for user:', userId);
       
       // Method 1: Check if user is HOD of any department (via tag system)
       const { data: hodTag } = await supabase
@@ -303,7 +293,6 @@ const TeacherDepartment = ({
           
           if (depts) {
             hodDepartments = depts;
-            console.log('✅ Found HOD departments:', hodDepartments.length);
           }
         }
       }
@@ -343,7 +332,6 @@ const TeacherDepartment = ({
           
           if (depts) {
             memberDepartments = depts;
-            console.log('✅ Found member/admin departments:', memberDepartments.length);
           }
         }
       }
@@ -358,10 +346,8 @@ const TeacherDepartment = ({
         index === self.findIndex(d => d.id === dept.id)
       );
 
-      console.log('✅ Total unique departments found:', allDepartments.length);
       
       if (allDepartments.length === 0) {
-        console.log('⚠️ No departments found for user');
         toast({
           title: "No Department",
           description: "You are not assigned to any department yet. Please contact your administrator.",
@@ -414,7 +400,6 @@ const TeacherDepartment = ({
 
         if (hodAssignment && hodAssignment.user_id === userId) {
           setUserRole('hod');
-          console.log('✅ User is HOD of this department');
           return;
         }
       }
@@ -439,14 +424,12 @@ const TeacherDepartment = ({
 
         if (adminAssignment) {
           setUserRole('admin');
-          console.log('✅ User is Admin of this department');
           return;
         }
       }
 
       // Default to member
       setUserRole('member');
-      console.log('✅ User is Member of this department');
     } catch (error) {
       console.log('Error checking user role:', error);
       setUserRole('member');
@@ -456,10 +439,8 @@ const TeacherDepartment = ({
   const loadDepartmentData = async (departmentId: string) => {
     try {
       setLoading(true);
-      console.log('📋 Loading data for department:', departmentId);
 
       // Fetch channels directly
-      console.log('🔍 Fetching channels from department_channels table...');
       const { data: channelList, error: channelError } = await supabase
         .from('department_channels')
         .select('*')
@@ -472,7 +453,7 @@ const TeacherDepartment = ({
         throw channelError;
       }
 
-      console.log('✅ Channels query result:', {
+      console.log('Channels query result:', {
         count: channelList?.length || 0,
         channels: channelList
       });
@@ -480,11 +461,9 @@ const TeacherDepartment = ({
       setChannels(channelList || []);
       
       if (channelList && channelList.length > 0) {
-        console.log('📌 Setting selected channel to:', channelList[0]);
         setSelectedChannel(channelList[0]);
         
         // Fetch messages directly
-        console.log('🔍 Fetching messages for channel:', channelList[0].id);
         const { data: msgs, error: msgError } = await supabase
           .from('department_messages')
           .select(`
@@ -504,11 +483,8 @@ const TeacherDepartment = ({
           throw msgError;
         }
 
-        console.log('✅ Messages found:', msgs?.length || 0);
         setMessages(msgs || []);
       } else {
-        console.warn('⚠️ No channels found for this department');
-        console.log('🔧 Creating default "General" channel...');
         
         // Auto-create a default channel
         const { data: newChannel, error: createError } = await supabase
@@ -531,7 +507,6 @@ const TeacherDepartment = ({
             variant: "destructive",
           });
         } else {
-          console.log('✅ Default channel created:', newChannel);
           setChannels([newChannel]);
           setSelectedChannel(newChannel);
           setMessages([]);
@@ -544,7 +519,6 @@ const TeacherDepartment = ({
       }
 
       // Fetch events directly
-      console.log('🔍 Fetching events...');
       const { data: eventList, error: eventError } = await supabase
         .from('department_events')
         .select(`
@@ -558,14 +532,11 @@ const TeacherDepartment = ({
         .order('start_datetime', { ascending: true });
 
       if (eventError) {
-        console.error('❌ Error fetching events:', eventError);
         throw eventError;
       }
 
-      console.log('✅ Events found:', eventList?.length || 0);
       setEvents(eventList || []);
     } catch (error) {
-      console.error("❌ Error loading department data:", error);
       toast({
         title: "Error",
         description: "Failed to load department data",
@@ -581,7 +552,6 @@ const TeacherDepartment = ({
 
     setLoadingMembers(true);
     try {
-      console.log('👥 Loading department members for:', department.id);
 
       // Get department_member tag
       const { data: memberTag } = await supabase
@@ -681,12 +651,11 @@ const TeacherDepartment = ({
         setAvailableStudents(allStudents?.filter(s => !crIds.includes(s.id)) || []);
       }
 
-      console.log('✅ Members loaded:', {
+      console.log('Members loaded:', {
         faculty: departmentMembers.length,
         crs: classRepresentatives.length
       });
     } catch (error) {
-      console.error('❌ Error loading members:', error);
       toast({
         title: "Error",
         description: "Failed to load department members",
@@ -892,22 +861,19 @@ const TeacherDepartment = ({
     });
 
     if (!newMessage.trim() && !attachedFile) {
-      console.log('❌ No message or file to send');
       return;
     }
     if (!selectedChannel) {
-      console.log('❌ No channel selected');
       return;
     }
     if (!userId) {
-      console.log('❌ No userId');
       return;
     }
 
     const messageText = newMessage.trim();
     const tempId = `temp-${Date.now()}`;
 
-    console.log('📤 Sending message:', {
+    console.log('Sending message:', {
       channel_id: selectedChannel.id,
       text: messageText.substring(0, 30),
       hasFile: !!attachedFile
@@ -972,7 +938,6 @@ const TeacherDepartment = ({
         fileUrl = urlData.publicUrl;
         finalFileName = fileToUpload.name;
         finalFileSize = fileToUpload.size;
-        console.log('✅ File uploaded successfully:', fileUrl);
       }
 
       // Determine message type
@@ -1017,8 +982,6 @@ const TeacherDepartment = ({
 
       if (msgError) throw msgError;
 
-      console.log('✅ Message sent successfully:', msg.id);
-
       if (msg) {
         // Replace optimistic message with real one
         setMessages(prev =>
@@ -1033,7 +996,6 @@ const TeacherDepartment = ({
         throw new Error('No response from server');
       }
     } catch (error) {
-      console.error("❌ Error sending message:", error);
       
       // Remove failed message and restore text
       setMessages(prev => prev.filter(m => (m as any).tempId !== tempId));
@@ -1133,8 +1095,6 @@ const TeacherDepartment = ({
 
     if (!department || !userId) return;
 
-    console.log('📅 Creating event with data:', eventData);
-
     try {
       const startDateTime = eventData.date && eventData.startTime
         ? new Date(`${eventData.date.toDateString()} ${eventData.startTime}`).toISOString()
@@ -1168,20 +1128,17 @@ const TeacherDepartment = ({
 
       if (error) throw error;
 
-      console.log('✅ Event created:', newEvent);
-
       if (newEvent) {
         setEvents((prev) => [...prev, newEvent]);
         setIsModalOpen(false);
         toast({
-          title: "✓ Success",
+          title: "Success",
           description: "Event created successfully",
         });
       } else {
         throw new Error('No response from server');
       }
     } catch (error) {
-      console.error("❌ Error creating event:", error);
       toast({
         title: "Error",
         description: "Failed to create event",
@@ -1271,12 +1228,12 @@ const TeacherDepartment = ({
             {userRole && (
               <Badge variant="outline" className={
                 userRole === 'hod'
-                  ? 'bg-purple-100 text-purple-700 border-purple-300' 
+                  ? ' text-purple-700 ' 
                   : userRole === 'admin'
-                  ? 'bg-blue-100 text-blue-700 border-blue-300'
-                  : 'bg-gray-100 text-gray-700 border-gray-300'
+                  ? ' text-blue-700 '
+                  : ' text-gray-700 '
               }>
-                {userRole === 'hod' ? '👑 HOD' : userRole === 'admin' ? '⚡ Admin' : '👤 Member'}
+                {userRole === 'hod' ? 'HOD' : userRole === 'admin' ? '⚡ Admin' : 'Member'}
               </Badge>
             )}
 
@@ -1326,14 +1283,6 @@ const TeacherDepartment = ({
           {/* Chat Header */}
           <div className="bg-sidebar-background border-b border-border px-6 py-4 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-foreground">
-                  {selectedChannel?.channel_name || "Communication"}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Real-time department-wide conversations
-                </p>
-              </div>
               
               {/* Search */}
               <div className="relative w-64 hidden md:block">

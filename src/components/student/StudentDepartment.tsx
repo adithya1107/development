@@ -1,13 +1,3 @@
-/**
- * StudentDepartment Component
- * 
- * Department view for students with class_representative tag:
- * - Read-only access to department messages
- * - View department events on calendar
- * - View announcements
- * - Cannot send messages or create events
- */
-
 import React, { useState, useRef, useEffect } from "react";
 import { 
   CalendarDays, Clock, User, Building2, Search, Wifi, WifiOff, 
@@ -124,7 +114,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
     if (userId) {
       loadStudentDepartment();
     } else {
-      console.error('❌ studentData or studentData.id/user_id is missing:', studentData);
       toast({
         title: 'Error',
         description: 'Student information is not available',
@@ -140,12 +129,10 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
   useEffect(() => {
     departmentIdRef.current = department?.id || null;
-    console.log('📌 Department ref updated:', departmentIdRef.current);
   }, [department?.id]);
 
   useEffect(() => {
     selectedChannelIdRef.current = selectedChannel?.id || null;
-    console.log('📌 Selected channel ref updated:', selectedChannelIdRef.current);
   }, [selectedChannel?.id]);
 
   useEffect(() => {
@@ -164,7 +151,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
   }, [messages]);
 
   const cleanupSubscriptions = () => {
-    console.log('🧹 Cleaning up subscriptions');
     if (messageSubscriptionRef.current) {
       supabase.removeChannel(messageSubscriptionRef.current);
       messageSubscriptionRef.current = null;
@@ -173,8 +159,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
   const subscribeToRealtimeUpdates = async () => {
     if (!selectedChannel?.id) return;
-
-    console.log('📡 Setting up realtime subscription for channel:', selectedChannel.id);
     
     // Clean up any existing subscription first
     cleanupSubscriptions();
@@ -189,7 +173,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         table: 'department_messages',
         filter: `channel_id=eq.${selectedChannel.id}`
       }, async (payload) => {
-        console.log('📨 Real-time message INSERT received:', {
+        console.log('Real-time message INSERT received:', {
           id: payload.new.id,
           channel_id: payload.new.channel_id,
           current_channel: selectedChannelIdRef.current,
@@ -197,7 +181,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         });
         
         if (payload.new.channel_id === selectedChannelIdRef.current) {
-          console.log('✅ Message is for current channel, fetching full data');
           
           // Fetch full message data with sender info
           const { data: fullMessage } = await supabase
@@ -218,10 +201,8 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
             setMessages((prev) => {
               const exists = prev.some(msg => msg.id === fullMessage.id);
               if (exists) {
-                console.log('⚠️ Duplicate message detected, replacing');
                 return prev.map(msg => msg.id === fullMessage.id ? fullMessage : msg);
               }
-              console.log('✅ Adding new message to state');
               return [...prev, fullMessage];
             });
             
@@ -238,36 +219,32 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         filter: `channel_id=eq.${selectedChannel.id}`
       }, (payload) => {
         if (payload.new.channel_id === selectedChannelIdRef.current) {
-          console.log('📝 Message updated:', payload.new.id);
           setMessages(prev =>
             prev.map(msg => msg.id === payload.new.id ? { ...msg, ...payload.new } : msg)
           );
         }
       })
       .subscribe((status) => {
-        console.log('📡 Subscription status:', status);
+        console.log('Subscription status:', status);
         if (status === 'SUBSCRIBED') {
           setRealtimeStatus('connected');
-          console.log('✅ Successfully subscribed to department messages');
+          console.log('Successfully subscribed to department messages');
         } else if (status === 'CHANNEL_ERROR') {
           setRealtimeStatus('error');
-          console.error('❌ Channel subscription error');
+          console.error('Channel subscription error');
         } else if (status === 'TIMED_OUT') {
           setRealtimeStatus('disconnected');
-          console.warn('⏱️ Subscription timed out');
+          console.warn('Subscription timed out');
         }
       });
 
     messageSubscriptionRef.current = subscription;
     setRealtimeStatus('connecting');
-    console.log('✅ Realtime subscription active');
   };
 
   const loadStudentDepartment = async () => {
     try {
       setLoading(true);
-
-      console.log('📋 Loading student department...');
       console.log('Student ID:', userId);
 
       if (!userId) {
@@ -295,18 +272,14 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         console.error('Error checking class rep status:', repError);
       }
 
-      console.log('Class rep assignment:', classRepAssignment);
-
       let departmentId: string | null = null;
 
       if (classRepAssignment?.context_id) {
         // User is a class representative
         departmentId = classRepAssignment.context_id;
-        console.log('✅ Found class representative assignment for department:', departmentId);
         setIsClassRep(true);
       } else {
         // Student is not a class representative - no department access
-        console.log('⚠️ Student is not a class representative');
         toast({
           title: 'No Department Access',
           description: 'You need to be a class representative to access the department section.',
@@ -325,7 +298,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
       if (deptError) throw deptError;
 
-      console.log('✅ Department found:', deptData);
       setDepartment(deptData);
 
       // Load department channel
@@ -339,7 +311,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
       if (channelError) {
         console.error('❌ Error fetching channels:', channelError);
       } else if (channelList && channelList.length > 0) {
-        console.log('✅ Channels found:', channelList.length);
         setSelectedChannel(channelList[0]);
 
         // Fetch messages for the channel
@@ -360,7 +331,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         if (msgError) {
           console.error('❌ Error fetching messages:', msgError);
         } else {
-          console.log('✅ Messages loaded:', msgs?.length || 0);
           setMessages(msgs || []);
         }
       }
@@ -382,7 +352,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
       if (eventsError) {
         console.error('❌ Error loading events:', eventsError);
       } else {
-        console.log('✅ Events loaded:', eventsData?.length || 0);
         setEvents(eventsData || []);
       }
 
@@ -395,7 +364,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
         .order('created_at', { ascending: false })
         .limit(20);
 
-      console.log('✅ Announcements loaded:', announcementsData?.length || 0);
       setAnnouncements(announcementsData || []);
 
     } catch (error) {
@@ -412,7 +380,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
   const checkClassRepStatus = async () => {
     if (!department?.id || !userId) {
-      console.log('Missing department or student ID');
       setIsClassRep(false);
       return;
     }
@@ -444,10 +411,8 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
       if (data) {
         setIsClassRep(true);
-        console.log('✅ User is class representative');
       } else {
         setIsClassRep(false);
-        console.log('User is regular student');
       }
     } catch (error) {
       console.log('Error checking class representative status:', error);
@@ -568,8 +533,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
 
             {/* Role Badge */}
             {isClassRep && (
-              <Badge variant="secondary" className="hidden sm:flex bg-yellow-100 text-yellow-700 border-yellow-300">
-                <Crown className="w-3 h-3 mr-1" />
+              <Badge variant="secondary" className="hidden sm:flex">
                 Class Rep
               </Badge>
             )}
@@ -590,14 +554,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
           {/* Chat Header */}
           <div className="bg-sidebar-background border-b border-border px-6 py-4 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-foreground">
-                  {selectedChannel?.channel_name || "Department Messages"}
-                </h2>
-                <p className="text-sm text-muted-foreground">
-                  Read-only view • Faculty and admin discussions
-                </p>
-              </div>
               
               {/* Search */}
               <div className="relative w-64 hidden md:block">
@@ -616,7 +572,7 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
           {messages.some((m) => m.is_pinned) && (
             <div className="bg-accent/50 border-b border-border px-6 py-3 flex-shrink-0">
               <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
-                <Pin className="h-4 w-4 text-blue-500" />
+                <Pin className="h-4 w-4" />
                 Pinned Messages
               </h4>
               <div className="space-y-1">
@@ -633,8 +589,8 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
                         </strong>{" "}
                         {m.message_text}
                         {m.file_name && (
-                          <span className="text-xs text-blue-500 ml-1">
-                            📎 {m.file_name}
+                          <span className="text-xs ml-1">
+                            {m.file_name}
                           </span>
                         )}
                       </span>
@@ -741,8 +697,6 @@ const StudentDepartment: React.FC<StudentDepartmentProps> = ({
               <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0" />
               <p className="text-muted-foreground">
                 <strong className="text-foreground">Read-only access:</strong>{' '}
-                As a class representative, you can view department messages but cannot reply. 
-                For urgent matters, contact your HOD directly.
               </p>
             </div>
           </div>
