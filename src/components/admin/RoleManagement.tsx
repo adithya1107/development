@@ -79,7 +79,7 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
     try {
       setIsLoading(true);
       
-      // First get all tag assignments
+      // First get all tag assignments (both active and inactive for complete view)
       const { data: assignments, error: assignmentsError } = await supabase
         .from('user_tag_assignments')
         .select(`
@@ -197,6 +197,15 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
     }
   };
 
+  // Get tags already assigned to the selected user (both active and inactive)
+  const getUserAssignedTags = (userId: string): string[] => {
+    if (!userId) return [];
+    
+    // Get all active assignments for this user
+    const userAssignments = tagAssignments.filter(a => a.user_id === userId && a.is_active);
+    return userAssignments.map(a => a.tag_id);
+  };
+
   const assignTag = async () => {
     if (!selectedUser || !selectedTag) {
       toast({
@@ -236,97 +245,44 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
         }
       }
 
-      // Check if user already has this tag (active or inactive)
-      const { data: existing, error: checkError } = await supabase
+      // CRITICAL CHECK: Ensure user doesn't already have this tag (active OR inactive)
+      const { data: existingAssignments, error: checkError } = await supabase
         .from('user_tag_assignments')
         .select('id, is_active')
         .eq('user_id', selectedUser)
-        .eq('tag_id', selectedTag)
-        .maybeSingle();
+        .eq('tag_id', selectedTag);
 
-      // If tag exists and is active, show error
-      if (existing && existing.is_active) {
+      if (checkError) {
+        console.error('Error checking existing assignments:', checkError);
         toast({
-          title: "Tag Already Assigned",
-          description: "This user already has this tag assigned.",
+          title: "Error",
+          description: "Failed to verify tag assignment. Please try again.",
           variant: "destructive",
         });
         return;
       }
 
-      // If tag exists but is inactive, reactivate it instead of inserting
-      if (existing && !existing.is_active) {
-        const { error: updateError } = await supabase
-          .from('user_tag_assignments')
-          .update({ 
-            is_active: true,
-            assigned_by: userProfile.id,
-            assigned_at: new Date().toISOString(),
-            expires_at: expiryDate ? new Date(expiryDate).toISOString() : null
-          })
-          .eq('id', existing.id);
-
-        if (updateError) {
-          console.error('Error reactivating tag:', updateError);
+      // If any assignment exists (active or inactive), prevent assignment
+      if (existingAssignments && existingAssignments.length > 0) {
+        const activeAssignment = existingAssignments.find(a => a.is_active);
+        
+        if (activeAssignment) {
           toast({
-            title: "Error",
-            description: "Failed to reassign tag. " + updateError.message,
+            title: "Tag Already Assigned",
+            description: `${selectedUserData.first_name} ${selectedUserData.last_name} already has the "${selectedTagData.display_name}" tag assigned.`,
             variant: "destructive",
           });
-          return;
+        } else {
+          toast({
+            title: "Tag Previously Assigned",
+            description: `This tag was previously assigned to this user. Each tag can only be assigned once per user.`,
+            variant: "destructive",
+          });
         }
-
-        // If reactivating HOD tag, update department_members role
-        if (selectedTagData?.tag_name?.toLowerCase() === 'hod' || 
-            selectedTagData?.tag_category?.toLowerCase() === 'hod') {
-          
-          console.log('HOD tag reactivated, syncing to department_members...');
-          
-          const { error: deptError } = await supabase
-            .from('department_members')
-            .update({ 
-              role: 'hod'
-            })
-            .eq('faculty_id', selectedUser)
-            .eq('is_active', true);
-
-          if (deptError) {
-            console.error('Error updating department role:', deptError);
-          } else {
-            const { data: deptMembers } = await supabase
-              .from('department_members')
-              .select('department_id')
-              .eq('faculty_id', selectedUser)
-              .eq('is_active', true);
-
-            if (deptMembers) {
-              for (const member of deptMembers) {
-                await supabase
-                  .from('departments')
-                  .update({ 
-                    hod_id: selectedUser,
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('id', member.department_id);
-              }
-            }
-          }
-        }
-
-        toast({
-          title: "Success",
-          description: `Tag reassigned to ${selectedUserData?.first_name} ${selectedUserData?.last_name} successfully.`,
-        });
-
-        setIsAssignDialogOpen(false);
-        setSelectedUser('');
-        setSelectedTag('');
-        setExpiryDate('');
-        loadTagAssignments();
         return;
       }
 
-      // If no existing record, insert new one
+      // If we reach here, no existing assignment was found - proceed with insert
       const assignmentData: any = {
         user_id: selectedUser,
         tag_id: selectedTag,
@@ -349,77 +305,78 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
           description: "Failed to assign tag. " + error.message,
           variant: "destructive",
         });
-      } else {
-        // If assigning HOD tag, update department_members role
-        if (selectedTagData?.tag_name?.toLowerCase() === 'hod' || 
-            selectedTagData?.tag_category?.toLowerCase() === 'hod') {
-          
-          console.log('HOD tag detected, syncing to department_members...');
-          
-          // Update all department memberships for this user to HOD role
-          const { error: deptError } = await supabase
+        return;
+      }
+
+      // If assigning HOD tag, update department_members role
+      if (selectedTagData?.tag_name?.toLowerCase() === 'hod' || 
+          selectedTagData?.tag_category?.toLowerCase() === 'hod') {
+        
+        console.log('HOD tag detected, syncing to department_members...');
+        
+        // Update all department memberships for this user to HOD role
+        const { error: deptError } = await supabase
+          .from('department_members')
+          .update({ 
+            role: 'hod'
+          })
+          .eq('faculty_id', selectedUser)
+          .eq('is_active', true);
+
+        if (deptError) {
+          console.error('Error updating department role:', deptError);
+          toast({
+            title: "Warning",
+            description: "Tag assigned but failed to update department role. Please update manually.",
+            variant: "destructive",
+          });
+        } else {
+          // Also update departments.hod_id for each department
+          const { data: deptMembers } = await supabase
             .from('department_members')
-            .update({ 
-              role: 'hod'
-            })
+            .select('department_id')
             .eq('faculty_id', selectedUser)
             .eq('is_active', true);
 
-          if (deptError) {
-            console.error('Error updating department role:', deptError);
-            toast({
-              title: "Warning",
-              description: "Tag assigned but failed to update department role. Please update manually.",
-              variant: "destructive",
-            });
-          } else {
-            // Also update departments.hod_id for each department
-            const { data: deptMembers } = await supabase
-              .from('department_members')
-              .select('department_id')
-              .eq('faculty_id', selectedUser)
-              .eq('is_active', true);
-
-            if (deptMembers) {
-              for (const member of deptMembers) {
-                await supabase
-                  .from('departments')
-                  .update({ 
-                    hod_id: selectedUser,
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('id', member.department_id);
-              }
+          if (deptMembers) {
+            for (const member of deptMembers) {
+              await supabase
+                .from('departments')
+                .update({ 
+                  hod_id: selectedUser,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', member.department_id);
             }
-            
-            console.log('Department roles synced successfully');
           }
+          
+          console.log('Department roles synced successfully');
         }
-        
-        // Log the assignment in audit
-        await supabase.from('tag_assignment_audit').insert([{
-          user_id: selectedUser,
-          tag_id: selectedTag,
-          action: 'assigned',
-          performed_by: userProfile.id,
-          new_values: {
-            tag_name: selectedTagData?.tag_name,
-            expires_at: expiryDate || null
-          },
-          reason: 'Manual assignment by admin'
-        }]);
-
-        toast({
-          title: "Success",
-          description: `Tag assigned to ${selectedUserData?.first_name} ${selectedUserData?.last_name} successfully.`,
-        });
-
-        setIsAssignDialogOpen(false);
-        setSelectedUser('');
-        setSelectedTag('');
-        setExpiryDate('');
-        loadTagAssignments();
       }
+      
+      // Log the assignment in audit
+      await supabase.from('tag_assignment_audit').insert([{
+        user_id: selectedUser,
+        tag_id: selectedTag,
+        action: 'assigned',
+        performed_by: userProfile.id,
+        new_values: {
+          tag_name: selectedTagData?.tag_name,
+          expires_at: expiryDate || null
+        },
+        reason: 'Manual assignment by admin'
+      }]);
+
+      toast({
+        title: "Success",
+        description: `Tag assigned to ${selectedUserData?.first_name} ${selectedUserData?.last_name} successfully.`,
+      });
+
+      setIsAssignDialogOpen(false);
+      setSelectedUser('');
+      setSelectedTag('');
+      setExpiryDate('');
+      loadTagAssignments();
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -559,6 +516,28 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
     { value: 'committee', label: 'Committees' }
   ];
 
+  // Filter available tags based on selected user and already assigned tags
+  const getFilteredTags = () => {
+    if (!selectedUser) return availableTags;
+    
+    const user = availableUsers.find(u => u.id === selectedUser);
+    const assignedTagIds = getUserAssignedTags(selectedUser);
+    
+    return availableTags.filter(tag => {
+      // Exclude already assigned tags
+      if (assignedTagIds.includes(tag.id)) {
+        return false;
+      }
+      
+      // Filter by user type if tag has base_user_type
+      if (user && tag.base_user_type) {
+        return user.user_type.toLowerCase() === tag.base_user_type.toLowerCase();
+      }
+      
+      return true;
+    });
+  };
+
   if (!isSuperAdmin) {
     return (
       <Card>
@@ -588,6 +567,8 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
     );
   }
 
+  const filteredTagsForUser = getFilteredTags();
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <Card>
@@ -599,7 +580,7 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
                 <span>Role Management</span>
               </CardTitle>
               <CardDescription className="text-xs sm:text-sm mt-2">
-                Assign and manage admin roles for your college. Only Super Admins can manage roles.
+                Assign and manage admin roles for your college. Each tag can only be assigned once per user.
               </CardDescription>
             </div>
             <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
@@ -613,7 +594,7 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
                 <DialogHeader>
                   <DialogTitle className="text-lg sm:text-xl">Assign Tag to User</DialogTitle>
                   <DialogDescription className="text-xs sm:text-sm">
-                    Select a user and tag to grant specific roles or permissions.
+                    Select a user and tag to grant specific roles or permissions. Each tag can only be assigned once per user.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
@@ -646,46 +627,39 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
 
                   <div className="space-y-2">
                     <Label>Select Tag</Label>
-                    <Select value={selectedTag} onValueChange={setSelectedTag}>
+                    <Select 
+                      value={selectedTag} 
+                      onValueChange={setSelectedTag}
+                      disabled={!selectedUser}
+                    >
                       <SelectTrigger>
-                        <SelectValue placeholder="Choose a tag" />
+                        <SelectValue placeholder={selectedUser ? "Choose a tag" : "Select a user first"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {availableTags
-                          .filter(tag => {
-                            // If a user is selected, only show tags matching their user_type
-                            if (selectedUser) {
-                              const user = availableUsers.find(u => u.id === selectedUser);
-                              if (user && tag.base_user_type) {
-                                return user.user_type.toLowerCase() === tag.base_user_type.toLowerCase();
-                              }
-                            }
-                            return true;
-                          })
-                          .map((tag) => (
-                          <SelectItem key={tag.id} value={tag.id}>
-                            <div className="flex items-center space-x-2">
-                              <Badge className={getCategoryColor(tag.tag_category)}>
-                                {tag.tag_category.replace('_', ' ')}
-                              </Badge>
-                              <div>
-                                <div className="font-medium">{tag.display_name}</div>
-                                <div className="text-sm text-gray-500">{tag.description}</div>
+                        {filteredTagsForUser.length === 0 && selectedUser ? (
+                          <div className="p-2 text-sm text-muted-foreground text-center">
+                            No available tags for this user
+                          </div>
+                        ) : (
+                          filteredTagsForUser.map((tag) => (
+                            <SelectItem key={tag.id} value={tag.id}>
+                              <div className="flex items-center space-x-2">
+                                <Badge className={getCategoryColor(tag.tag_category)}>
+                                  {tag.tag_category.replace('_', ' ')}
+                                </Badge>
+                                <div>
+                                  <div className="font-medium">{tag.display_name}</div>
+                                  <div className="text-sm text-gray-500">{tag.description}</div>
+                                </div>
                               </div>
-                            </div>
-                          </SelectItem>
-                        ))}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
-                    {selectedUser && availableTags.filter(tag => {
-                      const user = availableUsers.find(u => u.id === selectedUser);
-                      if (user && tag.base_user_type) {
-                        return user.user_type.toLowerCase() === tag.base_user_type.toLowerCase();
-                      }
-                      return true;
-                    }).length === 0 && (
+                    {selectedUser && filteredTagsForUser.length === 0 && (
                       <p className="text-xs text-yellow-600">
-                        No tags available for the selected user's type.
+                        All available tags have already been assigned to this user.
                       </p>
                     )}
                   </div>
@@ -704,13 +678,22 @@ const RoleManagement = ({ userProfile, adminRoles }: RoleManagementProps) => {
                   </div>
 
                   <div className="flex space-x-2 pt-4">
-                    <Button onClick={assignTag} className="flex-1">
+                    <Button 
+                      onClick={assignTag} 
+                      className="flex-1"
+                      disabled={!selectedUser || !selectedTag}
+                    >
                       <CheckCircle2 className="w-4 h-4 mr-2" />
                       Assign Tag
                     </Button>
                     <Button 
                       variant="outline" 
-                      onClick={() => setIsAssignDialogOpen(false)}
+                      onClick={() => {
+                        setIsAssignDialogOpen(false);
+                        setSelectedUser('');
+                        setSelectedTag('');
+                        setExpiryDate('');
+                      }}
                       className="flex-1"
                     >
                       Cancel
