@@ -355,12 +355,52 @@ const GradeManager = () => {
 
       if (error) throw error;
 
+      // Also save to course_grades table for CGPA calculation
+      const { data: courseInfo } = await supabase
+        .from("courses")
+        .select("credits, academic_year, semester")
+        .eq("id", selectedCourse)
+        .single();
+
+      if (courseInfo) {
+        // Convert letter grade to grade point (10-point scale)
+        const gradePointMap: { [key: string]: number } = {
+          'A': 10, 'B': 8, 'C': 6, 'D': 4, 'F': 0
+        };
+        const gradePoint = gradePointMap[finalGrade] || 0;
+
+        const courseGradeData = {
+          student_id: selectedStudent,
+          course_id: selectedCourse,
+          academic_year: courseInfo.academic_year || new Date().getFullYear().toString(),
+          semester: courseInfo.semester || 'Fall',
+          total_marks: calculatedScore,
+          max_marks: 100,
+          percentage: calculatedScore,
+          grade_letter: finalGrade,
+          grade_point: gradePoint,
+          credits: courseInfo.credits || 0,
+          is_completed: true,
+          is_passed: gradePoint >= 4,
+          recorded_by: recordedBy,
+          recorded_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        await supabase
+          .from("course_grades")
+          .upsert(courseGradeData, {
+            onConflict: 'student_id,course_id,academic_year,semester',
+            ignoreDuplicates: false
+          });
+      }
+
       // Refresh the existing grade data
       await fetchExistingGrade(selectedCourse, selectedStudent);
 
       toast({
         title: "Success",
-        description: `Grade saved successfully! ${customAssessments.length} custom assessments stored.`,
+        description: `Grade saved: ${finalGrade} (${calculatedScore.toFixed(1)}%) - ${customAssessments.length} assessments stored. Saved to CGPA records.`,
       });
     } catch (error) {
       console.error('Failed to save grade', error);
