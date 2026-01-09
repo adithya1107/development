@@ -41,8 +41,8 @@ import StudentEnrollmentManagement from '@/components/teacher/StudentEnrollmentM
 import TimetableManagement from '@/components/admin/TimetableManagement';
 import DepartmentManagement from '@/components/admin/DepartmentManagement';
 
-// Import dynamic feature loader
-import { loadUserFeatures, featuresToSidebarItems } from '../lib/FeatureLoader';
+// Import dynamic feature loader (REMOVED - not using database features)
+// import { loadUserFeatures, featuresToSidebarItems } from '../lib/FeatureLoader';
 import StudentVerification from '@/components/admin/StudentVerification';
 import PlacementManagement from '@/components/admin/PlacementManagement';
 
@@ -129,7 +129,7 @@ const Admin = () => {
   const [isMobile, setIsMobile] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
-  // NEW: Dynamic feature configuration state
+  // Tag-based feature configuration state
   const [sidebarItems, setSidebarItems] = useState<SidebarItem[]>([]);
   const [availableFeatureKeys, setAvailableFeatureKeys] = useState<Set<string>>(new Set());
   const [isLoadingFeatures, setIsLoadingFeatures] = useState(true);
@@ -254,79 +254,58 @@ const Admin = () => {
     return features;
   };
 
-  // NEW: Load dynamic features from database
+  // Load features based on tags or super admin status
   useEffect(() => {
-    const loadDynamicFeatures = async () => {
-      if (!userProfile?.college_id) return;
+    const loadFeatures = () => {
+      if (!userProfile) return;
       
-      try {
-        setIsLoadingFeatures(true);
-        console.log('Loading features for admin:', userProfile.id);
-        
-        // Check if user is super admin
-        const isSuper = userProfile.is_super_admin || false;
-        setIsSuperAdmin(isSuper);
-        
-        // Load features from database
-        const features = await loadUserFeatures(userProfile.college_id, 'admin');
-        
-        if (features.length === 0) {
-          // No features configured - use tag-based or fallback features
-          console.warn('No features configured, using tag-based features');
-          const tagFeatures = buildFeaturesFromTags(userTags);
-          const items = tagFeatures.map(f => ({
-            id: f.feature_key,
-            label: f.feature_name,
-            icon: getIconComponent(f.icon),
-            enabled: true,
-            order: f.display_order
-          }));
-          setSidebarItems(items);
-          setAvailableFeatureKeys(new Set(tagFeatures.map(f => f.feature_key)));
-        } else {
-          // Convert features to sidebar items
-          const items = featuresToSidebarItems(features);
-          
-          // Super admins ALWAYS have access to feature_config
-          if (isSuper && !items.find(i => i.id === 'feature_config')) {
-            items.push({
-              id: 'feature_config',
-              label: 'Feature Configuration',
-              icon: Settings,
-              enabled: true,
-              order: 5.5
-            });
-          }
-          
-          setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
-          
-          const featureKeys = new Set(features.map(f => f.feature_key));
-          if (isSuper) featureKeys.add('feature_config');
-          setAvailableFeatureKeys(featureKeys);
-          
-          console.log(`Loaded ${items.length} features for admin`);
-        }
-      } catch (error) {
-        console.error('Error loading features:', error);
-        // Fall back to tag-based features
-        const tagFeatures = buildFeaturesFromTags(userTags);
-        const items = tagFeatures.map(f => ({
-          id: f.feature_key,
-          label: f.feature_name,
-          icon: getIconComponent(f.icon),
-          enabled: true,
-          order: f.display_order
-        }));
-        setSidebarItems(items);
-      } finally {
-        setIsLoadingFeatures(false);
+      console.log('Loading features for admin:', userProfile.id, 'is_super_admin:', userProfile.is_super_admin);
+      
+      // Check if user is super admin
+      const isSuper = userProfile.is_super_admin === 'true';
+      setIsSuperAdmin(isSuper);
+      
+      let featuresToLoad: TagFeature[] = [];
+      
+      // If super admin, load all features
+      if (isSuper) {
+        console.log('Super admin detected, loading all features');
+        featuresToLoad = TAG_FEATURE_MAP.super_admin;
+      } else {
+        // For tagged admins, use their tags
+        console.log('Loading features for tags:', userTags);
+        featuresToLoad = buildFeaturesFromTags(userTags);
       }
+      
+      // Convert features to sidebar items
+      const items = featuresToLoad.map(f => ({
+        id: f.feature_key,
+        label: f.feature_name,
+        icon: getIconComponent(f.icon),
+        enabled: true,
+        order: f.display_order
+      }));
+      
+      console.log('Features loaded:', items.map(i => i.id));
+      setSidebarItems(items.sort((a, b) => (a.order || 0) - (b.order || 0)));
+      
+      const featureKeySet = new Set(featuresToLoad.map(f => f.feature_key));
+      console.log('Available feature keys:', Array.from(featureKeySet));
+      setAvailableFeatureKeys(featureKeySet);
+      setIsLoadingFeatures(false);
     };
 
-    if (userProfile?.college_id && userTags.length > 0) {
-      loadDynamicFeatures();
+    // Load features when userProfile is available
+    // For super admin, load immediately
+    // For tagged admins, wait for tags to be fetched
+    if (userProfile) {
+      if (userProfile.is_super_admin === true) {
+        loadFeatures();
+      } else if (userTags.length > 0) {
+        loadFeatures();
+      }
     }
-  }, [userProfile?.college_id, userTags]);
+  }, [userProfile, userTags]);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -454,23 +433,35 @@ const Admin = () => {
     navigate('/');
   };
 
-  // NEW: Check if a feature is available
+  // Check if a feature is available based on super admin status or tags
   const isFeatureAvailable = (featureKey: string): boolean => {
     // Super admins have access to everything
-    if (isSuperAdmin) return true;
+    if (isSuperAdmin) {
+      console.log(`Super admin checking feature: ${featureKey} - GRANTED`);
+      return true;
+    }
+    
+    // Dashboard is always available
+    if (featureKey === 'dashboard') return true;
     
     if (isLoadingFeatures) return true;
     if (availableFeatureKeys.size === 0) return true;
-    return availableFeatureKeys.has(featureKey);
+    
+    const hasAccess = availableFeatureKeys.has(featureKey);
+    console.log(`Feature check for ${featureKey}: ${hasAccess ? 'GRANTED' : 'DENIED'}`, 
+                `Available keys:`, Array.from(availableFeatureKeys));
+    return hasAccess;
   };
 
   const handleNavigationChange = (view) => {
+    console.log(`Navigation clicked: ${view}, isSuperAdmin: ${isSuperAdmin}, isFeatureAvailable: ${isFeatureAvailable(view)}`);
     if (isFeatureAvailable(view)) {
       setActiveView(view);
       if (isMobile) {
         setMobileMenuOpen(false);
       }
     } else {
+      console.warn(`Feature ${view} not available`);
       // Feature not available
       return;
     }
@@ -516,7 +507,7 @@ const Admin = () => {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  // NEW: Feature Not Available Component
+  // Feature Not Available Component
   const FeatureNotAvailable = () => (
     <div className="flex items-center justify-center min-h-[400px]">
       <div className="text-center">
@@ -532,7 +523,7 @@ const Admin = () => {
     </div>
   );
 
-  // MODIFIED: renderContent with feature availability checks
+  // Render content with feature availability checks
   const renderContent = () => {
     // Check if current view is available
     if (!isFeatureAvailable(activeView)) {
@@ -594,9 +585,7 @@ const Admin = () => {
           : <FeatureNotAvailable />;
       
       case 'feature_config':
-        return (isSuperAdmin || isFeatureAvailable('feature_config'))
-          ? <FeatureConfig userProfile={userProfile} />
-          : <FeatureNotAvailable />;
+        return <FeatureConfig userProfile={userProfile} />;
       
       case 'roles':
         return isFeatureAvailable('roles')
@@ -672,75 +661,6 @@ const Admin = () => {
             </div>
 
             <div className="flex items-center space-x-2 sm:space-x-3">
-              {/* <div className="relative" ref={notificationRef}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleNotifications}
-                  className="h-9 w-9 rounded-lg hover:bg-white/10 transition-all relative"
-                >
-                  <Bell className="h-5 w-5 text-foreground" />
-                  {unreadCount > 0 && (
-                    <div className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 rounded-full flex items-center justify-center">
-                      <span className="text-xs text-white font-medium">{unreadCount}</span>
-                    </div>
-                  )}
-                </Button>
-
-                {showNotifications && (
-                  <div className="fixed right-3 sm:right-4 top-20 w-72 sm:w-96 bg-background/95 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl z-[9999]">
-                    <div className="p-4 border-b border-white/10 flex items-center justify-between">
-                      <h3 className="text-base sm:text-lg font-semibold text-foreground">Notifications</h3>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setShowNotifications(false)}
-                        className="h-6 w-6"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="max-h-80 sm:max-h-96 overflow-y-auto">
-                      {notifications.length === 0 ? (
-                        <div className="p-6 text-center">
-                          <Bell className="h-10 sm:h-12 w-10 sm:w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-                          <p className="text-sm text-muted-foreground">No notifications</p>
-                        </div>
-                      ) : (
-                        notifications.map((notification) => (
-                          <div
-                            key={notification.id}
-                            className={`p-4 border-b border-white/10 cursor-pointer hover:bg-white/5 transition-colors ${!notification.read ? 'bg-white/5' : ''}`}
-                          >
-                            <div className="flex items-start space-x-3">
-                              <div className="flex-shrink-0 mt-1">
-                                {getNotificationIcon(notification.type)}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between">
-                                  <p className="text-sm font-medium text-foreground truncate">
-                                    {notification.title}
-                                  </p>
-                                  {!notification.read && (
-                                    <div className="h-2 w-2 bg-blue-500 rounded-full ml-2"></div>
-                                  )}
-                                </div>
-                                <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                                  {notification.message}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-2">
-                                  {notification.time}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div> */}
-
               <div className="relative" ref={userMenuRef}>
                 <Button
                   variant="ghost"
@@ -834,7 +754,7 @@ const Admin = () => {
 
       {/* Main Layout */}
       <div className="relative z-10 flex mt-[64px] min-h-[calc(100vh-4rem)]">
-        {/* Sidebar - NOW USES DYNAMIC ITEMS */}
+        {/* Sidebar - Uses Tag-Based Features */}
         <SidebarNavigation
           items={sidebarItems}
           activeItem={activeView}
