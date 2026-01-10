@@ -10,6 +10,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import PermissionWrapper from '@/components/PermissionWrapper';
 
+// Import jsPDF for PDF conversion
+import { jsPDF } from 'jspdf';
+
 interface CoursesLearningSnapshotProps {
   studentData: any;
 }
@@ -30,6 +33,142 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
   const [gradesLoading, setGradesLoading] = useState(false);
   
   const { toast } = useToast();
+
+  // PDF Conversion Functions
+  const convertImageToPDF = async (blob: Blob, fileName: string): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const pdf = new jsPDF({
+              orientation: img.width > img.height ? 'landscape' : 'portrait',
+              unit: 'px',
+              format: [img.width, img.height]
+            });
+            
+            pdf.addImage(e.target?.result as string, 'JPEG', 0, 0, img.width, img.height);
+            pdf.setProperties({
+              title: fileName,
+              subject: 'Course Material',
+              author: 'Learning Management System',
+            });
+            
+            const pdfBlob = pdf.output('blob');
+            resolve(pdfBlob);
+          } catch (error) {
+            reject(error);
+          }
+        };
+        
+        img.onerror = reject;
+        img.src = e.target?.result as string;
+      };
+      
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const convertTextToPDF = async (blob: Blob, fileName: string): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        try {
+          const text = e.target?.result as string;
+          const pdf = new jsPDF();
+          
+          // Add title
+          pdf.setFontSize(16);
+          pdf.setFont(undefined, 'bold');
+          pdf.text(fileName, 20, 20);
+          
+          // Add content
+          pdf.setFontSize(11);
+          pdf.setFont(undefined, 'normal');
+          
+          const lines = pdf.splitTextToSize(text, 170);
+          let yPosition = 35;
+          const lineHeight = 7;
+          const pageHeight = pdf.internal.pageSize.height;
+          
+          lines.forEach((line: string) => {
+            if (yPosition > pageHeight - 20) {
+              pdf.addPage();
+              yPosition = 20;
+            }
+            pdf.text(line, 20, yPosition);
+            yPosition += lineHeight;
+          });
+          
+          pdf.setProperties({
+            title: fileName,
+            subject: 'Course Material',
+            author: 'Learning Management System',
+          });
+          
+          const pdfBlob = pdf.output('blob');
+          resolve(pdfBlob);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = reject;
+      reader.readAsText(blob);
+    });
+  };
+
+  const createInfoPDF = (fileName: string, fileType: string): Blob => {
+    const pdf = new jsPDF();
+    
+    pdf.setFontSize(18);
+    pdf.setFont(undefined, 'bold');
+    pdf.text('Course Material Information', 20, 20);
+    
+    pdf.setFontSize(12);
+    pdf.setFont(undefined, 'normal');
+    pdf.text(`File Name: ${fileName}`, 20, 40);
+    pdf.text(`File Type: ${fileType || 'Document'}`, 20, 50);
+    pdf.text(`Course: ${selectedCourse?.course_name || 'N/A'}`, 20, 60);
+    
+    pdf.setFontSize(10);
+    pdf.text('Note: This material has been packaged as a PDF for your convenience.', 20, 80);
+    pdf.text('For the original file format, please access it through the course portal.', 20, 90);
+    
+    pdf.setProperties({
+      title: `Info - ${fileName}`,
+      subject: 'Course Material Information',
+      author: 'Learning Management System',
+    });
+    
+    return pdf.output('blob');
+  };
+
+  const convertToPDF = async (blob: Blob, fileName: string, fileType: string): Promise<Blob> => {
+    const fileExtension = fileName.split('.').pop()?.toLowerCase();
+    
+    // If already a PDF, return as is
+    if (fileExtension === 'pdf') {
+      return blob;
+    }
+    
+    // Handle images
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(fileExtension || '')) {
+      return await convertImageToPDF(blob, fileName);
+    }
+    
+    // Handle text files
+    if (['txt', 'md', 'csv'].includes(fileExtension || '')) {
+      return await convertTextToPDF(blob, fileName);
+    }
+    
+    // For other formats (videos, presentations, etc.), create info PDF
+    return createInfoPDF(fileName, fileType);
+  };
 
   // StudentGrades data fetching functions
   const fetchGrades = async () => {
@@ -329,6 +468,7 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
         throw new Error('Invalid file path');
       }
 
+      // Download the file from Supabase storage
       const { data, error } = await supabase.storage
         .from('course-materials')
         .download(filePath);
@@ -337,13 +477,22 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
         throw error;
       }
 
-      const blob = new Blob([data]);
-      const url = window.URL.createObjectURL(blob);
+      // Convert to PDF
+      toast({
+        title: 'Converting to PDF',
+        description: 'Please wait while we prepare your file...',
+      });
+
+      const pdfBlob = await convertToPDF(data, material.file_name || material.title, material.material_type);
+
+      // Download the PDF
+      const url = window.URL.createObjectURL(pdfBlob);
       const link = document.createElement('a');
       link.href = url;
       
-      const fileName = material.title || filePath.split('/').pop() || 'download';
-      link.download = fileName;
+      // Create PDF filename
+      const baseName = (material.title || material.file_name || 'material').replace(/\.[^/.]+$/, '');
+      link.download = `${baseName}.pdf`;
       
       document.body.appendChild(link);
       link.click();
@@ -352,7 +501,7 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
 
       toast({
         title: 'Success',
-        description: 'File downloaded successfully',
+        description: 'File downloaded as PDF successfully',
       });
     } catch (error) {
       console.error('Error downloading file:', error);
@@ -628,6 +777,7 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
           <Card>
             <CardHeader className="p-4 sm:p-6">
               <CardTitle className="text-lg sm:text-xl">Course Materials</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">All materials will be downloaded as PDF files</p>
             </CardHeader>
             <CardContent className="p-4 sm:p-6">
               <div className="space-y-3">
@@ -645,9 +795,14 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm sm:text-base truncate">{material.title}</p>
                           <p className="text-xs sm:text-sm text-muted-foreground mt-1 line-clamp-2">{material.description}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Uploaded: {new Date(material.uploaded_at).toLocaleDateString()}
-                          </p>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <p className="text-xs text-muted-foreground">
+                              Uploaded: {new Date(material.uploaded_at).toLocaleDateString()}
+                            </p>
+                            <Badge variant="secondary" className="text-xs">
+                              {material.material_type}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
                       <div className="flex space-x-2 flex-shrink-0">
@@ -661,12 +816,15 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
                             </Button>
                             <Button 
                               size="sm" 
-                              variant="outline"
+                              variant="default"
                               onClick={() => handleDownloadFile(material)}
                               disabled={downloadingFile === material.id}
+                              className="bg-primary hover:bg-primary/90"
                             >
                               <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                              <span className="text-xs sm:text-sm">{downloadingFile === material.id ? 'Downloading...' : 'Download'}</span>
+                              <span className="text-xs sm:text-sm">
+                                {downloadingFile === material.id ? 'Converting...' : 'Download PDF'}
+                              </span>
                             </Button>
                           </>
                         )}
@@ -794,7 +952,6 @@ const CoursesLearningSnapshot: React.FC<CoursesLearningSnapshotProps> = ({ stude
         </div>
 
         <Tabs defaultValue="courses" className="space-y-4">
-
           <TabsContent value="courses" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {enrolledCourses.map((enrollment, index) => (
