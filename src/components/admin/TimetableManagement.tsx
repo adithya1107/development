@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Calendar,
   Plus, 
@@ -19,15 +20,24 @@ import {
   BookOpen,
   User,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Download,
+  Upload,
+  RefreshCw
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import Papa from 'papaparse';
 
 interface UserProfile {
   id: string;
   college_id: string;
   user_type: string;
+}
+
+interface BulkImportData {
+  file: File | null;
+  preview: any[];
 }
 
 const TimetableManagement = ({ userProfile }: { userProfile: UserProfile }) => {
@@ -38,10 +48,16 @@ const TimetableManagement = ({ userProfile }: { userProfile: UserProfile }) => {
   const [isAddScheduleOpen, setIsAddScheduleOpen] = useState(false);
   const [isEditScheduleOpen, setIsEditScheduleOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isBulkImportDialogOpen, setIsBulkImportDialogOpen] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProcessingBulk, setIsProcessingBulk] = useState(false);
+  const [bulkImportData, setBulkImportData] = useState<BulkImportData>({
+    file: null,
+    preview: []
+  });
 
   const daysOfWeek = [
     { value: 0, label: 'Sunday', short: 'Sun' },
@@ -321,6 +337,206 @@ const TimetableManagement = ({ userProfile }: { userProfile: UserProfile }) => {
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'),
+        complete: (results) => {
+          const validRecords = results.data.filter((row: any) => {
+            return row.course_code && row.day_of_week && row.start_time && row.end_time;
+          });
+
+          if (validRecords.length === 0) {
+            toast({
+              title: "Error",
+              description: "No valid records found in CSV. Expected columns: course_code, day_of_week, start_time, end_time, room_location (optional)",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          // Validate time format and day of week
+          const invalidRecords = validRecords.filter((row: any) => {
+            const dayNum = parseInt(row.day_of_week);
+            const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+            return isNaN(dayNum) || dayNum < 0 || dayNum > 6 || 
+                   !timeRegex.test(row.start_time) || 
+                   !timeRegex.test(row.end_time);
+          });
+
+          if (invalidRecords.length > 0) {
+            toast({
+              title: "Error",
+              description: `${invalidRecords.length} record(s) have invalid data. Day must be 0-6, times must be in HH:MM format.`,
+              variant: "destructive",
+            });
+            return;
+          }
+
+          setBulkImportData({
+            file,
+            preview: validRecords.slice(0, 5)
+          });
+
+          toast({
+            title: "CSV Loaded",
+            description: `Found ${validRecords.length} valid record(s). Preview showing first ${Math.min(5, validRecords.length)}.`,
+          });
+        },
+        error: (error) => {
+          console.error('CSV parsing error:', error);
+          toast({
+            title: "Error",
+            description: "Failed to parse CSV file.",
+            variant: "destructive",
+          });
+        }
+      });
+    } catch (error) {
+      console.error('Error reading file:', error);
+      toast({
+        title: "Error",
+        description: "Failed to read CSV file.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleBulkImport = async () => {
+    if (!bulkImportData.file) {
+      toast({
+        title: "Error",
+        description: "Please select a CSV file.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsProcessingBulk(true);
+
+    try {
+      Papa.parse(bulkImportData.file, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'),
+        complete: async (results) => {
+          const validRecords = results.data.filter((row: any) => {
+            const dayNum = parseInt(row.day_of_week);
+            const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+            return row.course_code && 
+                   !isNaN(dayNum) && dayNum >= 0 && dayNum <= 6 && 
+                   timeRegex.test(row.start_time) && 
+                   timeRegex.test(row.end_time);
+          });
+
+          let successCount = 0;
+          let failCount = 0;
+          const errors: string[] = [];
+
+          for (const row of validRecords) {
+            try {
+              // Find course by course_code
+              const course = courses.find(c => c.course_code === row.course_code.trim());
+              
+              if (!course) {
+                throw new Error(`Course not found: ${row.course_code}`);
+              }
+
+              // Validate time order
+              if (row.start_time >= row.end_time) {
+                throw new Error('End time must be after start time');
+              }
+
+              const scheduleData = {
+                course_id: course.id,
+                day_of_week: parseInt(row.day_of_week),
+                start_time: row.start_time.trim(),
+                end_time: row.end_time.trim(),
+                room_location: row.room_location ? row.room_location.trim() : ''
+              };
+
+              const { error } = await supabase
+                .from('class_schedule')
+                .insert([scheduleData]);
+
+              if (error) {
+                throw error;
+              }
+
+              successCount++;
+            } catch (error: any) {
+              failCount++;
+              errors.push(`${row.course_code} (Day ${row.day_of_week}): ${error.message}`);
+              console.error(`Error processing ${row.course_code}:`, error);
+            }
+          }
+
+          setIsProcessingBulk(false);
+          setIsBulkImportDialogOpen(false);
+          setBulkImportData({
+            file: null,
+            preview: []
+          });
+
+          await loadSchedules();
+
+          toast({
+            title: "Bulk Import Complete",
+            description: `Successfully imported ${successCount} schedule(s). ${failCount > 0 ? `Failed: ${failCount}` : ''}`,
+            variant: failCount > 0 ? "destructive" : "default",
+          });
+
+          if (errors.length > 0) {
+            console.error('Import errors:', errors);
+          }
+        },
+        error: (error) => {
+          setIsProcessingBulk(false);
+          console.error('CSV parsing error:', error);
+          toast({
+            title: "Error",
+            description: "Failed to parse CSV file.",
+            variant: "destructive",
+          });
+        }
+      });
+    } catch (error) {
+      setIsProcessingBulk(false);
+      console.error('Error in bulk import:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process bulk import.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const downloadTemplate = () => {
+    const template = [
+      ['course_code', 'day_of_week', 'start_time', 'end_time', 'room_location'],
+      ['CS101', '1', '09:00', '10:30', 'Room 101'],
+      ['MATH201', '2', '11:00', '12:30', 'Building A - Room 205'],
+      ['PHY301', '3', '14:00', '15:30', '']
+    ];
+
+    const csv = Papa.unparse(template);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'timetable_import_template.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const resetScheduleForm = () => {
     setScheduleForm({
       course_id: '',
@@ -412,13 +628,133 @@ const TimetableManagement = ({ userProfile }: { userProfile: UserProfile }) => {
                 Manage class schedules and weekly timetable
               </CardDescription>
             </div>
-            <Button onClick={() => {
-              resetScheduleForm();
-              setIsAddScheduleOpen(true);
-            }}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Class Schedule
-            </Button>
+            <div className="flex space-x-2">
+              <Dialog open={isBulkImportDialogOpen} onOpenChange={setIsBulkImportDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="w-full sm:w-auto">
+                    <Upload className="w-4 h-4 mr-2" />
+                    Bulk Import
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Bulk Import Class Schedules</DialogTitle>
+                    <DialogDescription>
+                      Import multiple class schedules from CSV file
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        <p className="font-semibold mb-1">CSV Format Requirements:</p>
+                        <ul className="list-disc list-inside space-y-1 text-sm">
+                          <li>Required columns: course_code, day_of_week, start_time, end_time</li>
+                          <li>Optional column: room_location</li>
+                          <li>day_of_week: 0 (Sunday) to 6 (Saturday)</li>
+                          <li>Time format: HH:MM (24-hour format, e.g., 09:00, 14:30)</li>
+                          <li>Course must already exist in the system</li>
+                          <li>Column names are case-insensitive</li>
+                        </ul>
+                      </AlertDescription>
+                    </Alert>
+
+                    <div className="flex justify-end">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={downloadTemplate}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download Template
+                      </Button>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="csv_file">CSV File *</Label>
+                      <Input
+                        id="csv_file"
+                        type="file"
+                        accept=".csv"
+                        onChange={handleFileChange}
+                        disabled={isProcessingBulk}
+                      />
+                    </div>
+
+                    {bulkImportData.preview.length > 0 && (
+                      <div>
+                        <Label className="mb-2 block">Preview (First 5 Records)</Label>
+                        <div className="border rounded-lg overflow-auto max-h-64">
+                          <table className="w-full text-sm">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-4 py-2 text-left">Course Code</th>
+                                <th className="px-4 py-2 text-left">Day</th>
+                                <th className="px-4 py-2 text-left">Start Time</th>
+                                <th className="px-4 py-2 text-left">End Time</th>
+                                <th className="px-4 py-2 text-left">Room</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {bulkImportData.preview.map((row: any, index) => (
+                                <tr key={index} className="border-t">
+                                  <td className="px-4 py-2 font-mono">{row.course_code}</td>
+                                  <td className="px-4 py-2">
+                                    {daysOfWeek[parseInt(row.day_of_week)]?.label || row.day_of_week}
+                                  </td>
+                                  <td className="px-4 py-2">{row.start_time}</td>
+                                  <td className="px-4 py-2">{row.end_time}</td>
+                                  <td className="px-4 py-2">{row.room_location || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setIsBulkImportDialogOpen(false);
+                        setBulkImportData({
+                          file: null,
+                          preview: []
+                        });
+                      }}
+                      disabled={isProcessingBulk}
+                    >
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={handleBulkImport}
+                      disabled={!bulkImportData.file || isProcessingBulk}
+                    >
+                      {isProcessingBulk ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Importing...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4 mr-2" />
+                          Import Schedules
+                        </>
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              <Button onClick={() => {
+                resetScheduleForm();
+                setIsAddScheduleOpen(true);
+              }}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Class Schedule
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -532,8 +868,8 @@ const TimetableManagement = ({ userProfile }: { userProfile: UserProfile }) => {
             </div>
           ) : (
             <div className="text-center py-8">
-              <BookOpen className="w-10 h-10 mx-auto mb-3" />
-              <p className="text-sm">
+              <BookOpen className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+              <p className="text-sm text-gray-600">
                 {searchTerm 
                   ? 'No classes found matching your search'
                   : `No classes scheduled for ${daysOfWeek[activeDay].label}`
@@ -747,9 +1083,9 @@ const TimetableManagement = ({ userProfile }: { userProfile: UserProfile }) => {
             </DialogDescription>
           </DialogHeader>
           {selectedSchedule && (
-            <div className="p-4 rounded-lg">
+            <div className="p-4 rounded-lg bg-gray-50">
               <p className="font-medium">{selectedSchedule.courses?.course_name}</p>
-              <p className="text-sm">
+              <p className="text-sm text-gray-600">
                 {daysOfWeek[selectedSchedule.day_of_week]?.label} • {formatTime(selectedSchedule.start_time)} - {formatTime(selectedSchedule.end_time)}
               </p>
             </div>
